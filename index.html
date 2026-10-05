@@ -1,0 +1,1611 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Space Station Math Game - Cloud Edition</title>
+  
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Noto+Sans+Thai:wght@400;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+  
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'Noto Sans Thai', 'sans-serif'] },
+          colors: {
+            space: { 900: '#0b0f19', 800: '#111827', 700: '#1f2937' },
+            laserPink: '#ff2a6d', neonBlue: '#05d9e8', gold: '#ffd700',
+            shieldCyan: '#00f0ff', marsOrange: '#ff5e00', dangerRed: '#ff003c', factoryAmber: '#f59e0b'
+          }
+        }
+      }
+    }
+  </script>
+  
+  <style>
+    body { background-color: #0b0f19; color: #fff; overflow-x: hidden; touch-action: pan-y; }
+    .view-screen { display: none !important; }
+    .view-screen.active { display: flex !important; }
+    .animate-fade { animation: fadeIn 0.4s ease-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    
+    /* Modals */
+    .info-modal { opacity: 0; pointer-events: none; transition: opacity 0.3s ease; z-index: 100; }
+    .info-modal.active { opacity: 1; pointer-events: auto; }
+    .info-modal .modal-content { transform: scale(0.9); transition: transform 0.3s ease; }
+    .info-modal.active .modal-content { transform: scale(1); }
+
+    /* Galactic Map Styles */
+    #galactic-map { display:flex; flex-wrap:wrap; justify-content:center; gap:15px; padding:20px; max-width:800px; margin:auto; background: linear-gradient(180deg, #111827 0%, #0b0f19 100%); border-radius: 20px; border: 2px solid #05d9e8; box-shadow: inset 0 0 20px rgba(5, 217, 232, 0.2); }
+    .planet-node { width:65px; height:65px; border-radius:50%; display:flex; flex-direction:column; align-items:center; justify-content:center; font-weight:900; font-size: 1rem; cursor:pointer; position:relative; text-align: center; line-height: 1.2; transition: all 0.3s; border: 3px solid transparent; }
+    @media (min-width: 768px) { .planet-node { width:75px; height:75px; font-size: 1.2rem; gap: 20px; } #galactic-map{ gap: 20px; } }
+    .planet-node:hover { transform: scale(1.1); }
+    .planet-node.locked { background:#1f2937; color:#4b5563; cursor:not-allowed; border-color: #374151; }
+    .planet-node.locked::after { content:'🔒'; position:absolute; font-size:1.5rem; opacity:0.5; top: 15px; }
+    .planet-node.unlocked { background:radial-gradient(circle, #05d9e8, #038a93); box-shadow:0 0 15px #05d9e8; color:#0b0f19; animation: pulse 2s infinite; }
+    .planet-node.completed { background:radial-gradient(circle, #ffd700, #b89a00); box-shadow:0 0 10px #ffd700; color:#0b0f19; border-color: #fff; }
+    @keyframes pulse { 0% {transform:scale(1); box-shadow: 0 0 10px #05d9e8;} 50% {transform:scale(1.1); box-shadow: 0 0 25px #05d9e8;} 100% {transform:scale(1); box-shadow: 0 0 10px #05d9e8;} }
+    
+    /* Gamification Animations */
+    .radar-scan { animation: radar 2s linear infinite; border-top-color: rgba(5, 217, 232, 0.8); }
+    @keyframes radar { to { transform: rotate(360deg); } }
+    .explode { animation: explosion 0.5s ease-out forwards; }
+    @keyframes explosion { 0% { transform: scale(1); filter: brightness(1); } 50% { transform: scale(1.8) rotate(15deg); filter: brightness(2) hue-rotate(90deg); opacity: 1; } 100% { transform: scale(0); opacity: 0; } }
+    .shake { animation: shake 0.4s ease-in-out; }
+    @keyframes shake { 0%, 100% {transform: translateX(0);} 25% {transform: translateX(-5px) rotate(-5deg);} 75% {transform: translateX(5px) rotate(5deg);} }
+
+    input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+
+    /* Runner Mode CSS */
+    @keyframes bounce-in { 0% { transform: scale(0.5); opacity: 0; } 80% { transform: scale(1.05); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
+    .animate-bounce-in { animation: bounce-in 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+    .math-input { width: 100px; text-align: center; font-size: 1.25rem; font-weight: bold; border: 3px solid #93c5fd; border-radius: 0.75rem; padding: 0.5rem; color: #1e3a8a; outline: none; transition: all 0.2s; box-shadow: inset 0 2px 4px rgba(0,0,0,0.05); }
+    .math-input:focus { border-color: #3b82f6; box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.3); transform: scale(1.05); }
+    .polya-step-active { background-color: #fef08a; border-color: #eab308; font-weight: bold; color: #854d0e; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+    .polya-step-done { background-color: #bbf7d0; border-color: #22c55e; color: #166534; }
+    .blur-sm { filter: blur(4px); transition: filter 0.3s ease; }
+    .btn-primary { background: linear-gradient(to bottom, #4ade80, #16a34a); border-bottom: 5px solid #14532d; transition: all 0.1s; }
+    .btn-primary:active:not(:disabled) { transform: translateY(5px); border-bottom: 0px solid #14532d; margin-top: 5px; }
+
+    /* Loading Spinner */
+    #loading-overlay { z-index: 9999; }
+    .spinner { border: 4px solid rgba(5, 217, 232, 0.1); border-left-color: #05d9e8; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+  </style>
+</head>
+<body class="antialiased min-h-screen flex flex-col relative">
+
+  <div id="loading-overlay" class="fixed inset-0 bg-black/90 flex flex-col items-center justify-center hidden opacity-0 transition-opacity duration-300">
+      <div class="spinner mb-4"></div>
+      <p class="text-neonBlue font-bold animate-pulse text-lg tracking-widest">กำลังเชื่อมต่อฐานข้อมูลจักรวาล...</p>
+  </div>
+
+  <div id="view-start" class="view-screen active min-h-screen flex-col items-center justify-center relative bg-space-900 py-10 px-4">
+    <div class="z-10 w-full max-w-2xl text-center space-y-8 animate-fade">
+      <div>
+        <div class="w-24 h-24 bg-space-900 rounded-full border-4 border-neonBlue mx-auto flex items-center justify-center text-4xl shadow-[0_0_15px_rgba(5,217,232,0.5)] mb-4">🚀</div>
+        <h1 class="text-4xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-neonBlue to-laserPink uppercase drop-shadow-lg">SPACE STATION</h1>
+        <h2 class="text-slate-300 mt-2 font-bold text-lg">สถาบันฝึกฝนนักคูณและหารแห่งจักรวาล</h2>
+      </div>
+
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <button onclick="openModal('howToPlayModal')" class="p-3 rounded-xl bg-space-800 hover:bg-space-700 border border-neonBlue text-white font-bold flex flex-col items-center gap-1 hover:-translate-y-1 transition text-sm">
+          <span class="text-2xl">📖</span>วิธีเล่น
+        </button>
+        <button onclick="fetchLeaderboard()" class="p-3 rounded-xl bg-space-800 hover:bg-space-700 border border-gold text-white font-bold flex flex-col items-center gap-1 hover:-translate-y-1 transition text-sm">
+          <span class="text-2xl">🏆</span>จัดอันดับ
+        </button>
+        <button onclick="fetchDashboard()" class="p-3 rounded-xl bg-space-800 hover:bg-space-700 border border-shieldCyan text-white font-bold flex flex-col items-center gap-1 hover:-translate-y-1 transition text-sm">
+          <span class="text-2xl">📊</span>ข้อมูลผู้เล่น
+        </button>
+        <button onclick="openModal('creditsModal')" class="p-3 rounded-xl bg-space-800 hover:bg-space-700 border border-laserPink text-white font-bold flex flex-col items-center gap-1 hover:-translate-y-1 transition text-sm">
+          <span class="text-2xl">💡</span>ผู้จัดทำ
+        </button>
+      </div>
+
+      <!-- Login / Register Section -->
+      <div class="bg-space-800 p-6 rounded-2xl border border-slate-700 text-left relative overflow-hidden">
+        <div class="absolute top-0 right-0 bg-emerald-600 text-white text-xs font-black px-3 py-1 rounded-bl-lg shadow-lg">CLOUD SYNC ON ☁️</div>
+        <h3 class="text-white font-bold mb-4 flex items-center gap-2 text-lg"><span>👤</span> ลงทะเบียน / เข้าสู่ระบบกัปตัน</h3>
+        
+        <div class="space-y-3 mb-4">
+            <input type="text" id="playerName" placeholder="กรอกชื่อกัปตัน (ห้ามซ้ำถ้าเป็นผู้เล่นใหม่)" class="w-full bg-space-900 border-2 border-slate-600 focus:border-neonBlue rounded-xl py-3 px-4 text-white font-bold outline-none transition">
+            <input type="password" id="playerPass" placeholder="ตั้งรหัสผ่าน 4-6 หลัก" class="w-full bg-space-900 border-2 border-slate-600 focus:border-neonBlue rounded-xl py-3 px-4 text-white font-bold outline-none transition">
+        </div>
+        
+        <div class="flex flex-col sm:flex-row gap-3">
+          <button onclick="authenticate('login')" class="flex-1 py-3 rounded-xl bg-neonBlue text-space-900 font-black text-lg hover:brightness-110 transition shadow-[0_0_10px_rgba(5,217,232,0.4)]">เข้าสู่ระบบ (ผู้เล่นเก่า) 🔑</button>
+          <button onclick="authenticate('register')" class="flex-1 py-3 rounded-xl bg-space-700 border border-neonBlue text-neonBlue font-black text-lg hover:bg-space-600 transition">ลงทะเบียนใหม่ 📝</button>
+        </div>
+        <div id="auth-msg" class="text-laserPink font-bold mt-4 text-center h-6"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- How To Play Modal -->
+  <div id="howToPlayModal" class="info-modal fixed inset-0 bg-black/80 flex items-center justify-center p-4">
+    <div class="modal-content bg-space-900 border border-neonBlue rounded-2xl max-w-lg w-full p-6 relative">
+      <h3 class="text-2xl font-bold text-neonBlue mb-4 border-b border-slate-700 pb-2">📖 วิธีการเล่น & ระบบเกม</h3>
+      <div class="space-y-3 text-slate-300 text-sm mb-6 max-h-64 overflow-y-auto pr-2">
+        <div class="bg-space-800 p-3 rounded-lg border border-slate-700"><strong>📡 ขั้นที่ 1: สแกนเป้าหมาย</strong> วิเคราะห์ปัญหา (ตอบถูก +100 แต้ม / ตอบผิด -50 แต้ม เสีย 1 หัวใจ)</div>
+        <div class="bg-space-800 p-3 rounded-lg border border-slate-700"><strong>🛠️ ขั้นที่ 2: ประกอบอาวุธ</strong> เลือกติดตั้งอาวุธการคูณ หรือการหาร ให้ตรงกับภารกิจ</div>
+        <div class="bg-space-800 p-3 rounded-lg border border-slate-700"><strong>⚡ ขั้นที่ 3: ชาร์จพลังงาน</strong> กรอกตัวเลขคำนวณและช่องทดเลขทีละหลักเพื่อชาร์จหลอดพลังงาน</div>
+        <div class="bg-space-800 p-3 rounded-lg border border-slate-700"><strong>🚀 โหมด Runner (ด่าน 17-21):</strong> บังคับยานหลบอุกกาบาต เก็บไอเทมเพื่อเข้าโหมดแก้โจทย์ปัญหา (Polya 4 ขั้นตอน)</div>
+        <div class="bg-space-800 p-3 rounded-lg border border-slate-700"><strong>⏱️ โบนัสเวลา:</strong> เคลียร์ด่านไวรับโบนัสสูงสุด 200 แต้ม! ยิ่งทำเวลายิ่งดีคะแนนยิ่งพุ่ง</div>
+      </div>
+      <button onclick="closeModal('howToPlayModal')" class="w-full py-3 rounded-xl bg-slate-700 text-white font-bold hover:bg-slate-600 transition">ปิดหน้าต่าง</button>
+    </div>
+  </div>
+
+  <!-- Leaderboard Modal -->
+  <div id="leaderboardModal" class="info-modal fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50">
+    <div class="modal-content bg-space-900 border border-gold rounded-2xl max-w-md w-full p-6 relative flex flex-col max-h-[85vh]">
+      <div class="absolute -top-6 -right-6 text-6xl drop-shadow-[0_0_15px_#ffd700]">🏆</div>
+      <h3 class="text-2xl font-black text-gold mb-4 border-b border-slate-700 pb-2 uppercase tracking-widest text-center">Top Captains</h3>
+      <div id="leaderboard-list" class="flex-1 overflow-y-auto space-y-2 pr-2 mb-4">
+        <!-- Injected via JS -->
+      </div>
+      <button onclick="closeModal('leaderboardModal')" class="w-full py-3 rounded-xl bg-slate-700 text-white font-bold hover:bg-slate-600 transition mt-auto">ปิดหน้าต่าง</button>
+    </div>
+  </div>
+
+  <!-- Dashboard Modal -->
+  <div id="dashboardModal" class="info-modal fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50">
+    <div class="modal-content bg-space-900 border border-shieldCyan rounded-2xl max-w-4xl w-full p-6 relative flex flex-col max-h-[90vh]">
+      <h3 class="text-2xl font-black text-shieldCyan mb-4 border-b border-slate-700 pb-2 flex justify-between items-center">
+        <span>📊 ข้อมูลกัปตันทุกลำ (Dashboard)</span>
+        <button onclick="closeModal('dashboardModal')" class="text-slate-400 hover:text-white text-sm bg-space-800 px-3 py-1 rounded border border-slate-700">ปิด X</button>
+      </h3>
+      <div class="overflow-x-auto flex-1 border border-slate-700 rounded-xl bg-space-800">
+          <table class="w-full text-left text-sm whitespace-nowrap">
+              <thead class="bg-space-900 text-slate-300 border-b border-slate-700 sticky top-0">
+                  <tr>
+                      <th class="p-4">ชื่อกัปตัน</th>
+                      <th class="p-4 text-center">คะแนนรวม</th>
+                      <th class="p-4 text-center">ด่านสูงสุด</th>
+                      <th class="p-4 text-right">อัปเดตล่าสุด</th>
+                  </tr>
+              </thead>
+              <tbody id="dashboard-list" class="divide-y divide-slate-700/50">
+                  <!-- Injected via JS -->
+              </tbody>
+          </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Credits Modal -->
+  <div id="creditsModal" class="info-modal fixed inset-0 bg-black/80 flex items-center justify-center p-4">
+    <div class="modal-content bg-space-900 border border-laserPink rounded-2xl max-w-md w-full p-6 text-center">
+      <h3 class="text-2xl font-bold text-laserPink mb-4 border-b border-slate-700 pb-2">💡 ผู้จัดทำ</h3>
+      <div class="flex flex-col items-center mb-6">
+        <div class="w-32 h-32 rounded-full border-4 border-laserPink overflow-hidden mb-3 bg-space-800">
+          <img src="67d3b97a-9f8e-484c-bec2-4cf9310f87d9.jfif" alt="นางสาวเยาวเรศ เทียมไธสง" class="w-full h-full object-cover" onerror="this.src='https://placehold.co/128x128/ff2a6d/ffffff?text=Photo'">
+        </div>
+        <p class="font-black text-white text-lg">นางสาวเยาวเรศ เทียมไธสง</p>
+        <p class="text-slate-300 text-sm mt-1">ชั้นปีที่ 4 รหัสนักศึกษา 6640140213</p>
+        <p class="text-laserPink font-bold text-sm mt-1">สาขาวิชาคณิตศาสตร์ มหาวิทยาลัยราชภัฏเลย</p>
+      </div>
+      <button onclick="closeModal('creditsModal')" class="w-full py-3 rounded-xl bg-slate-700 text-white font-bold">ปิดหน้าต่าง</button>
+    </div>
+  </div>
+
+  <div id="view-menu" class="view-screen min-h-screen p-4 sm:p-6 flex-col items-center justify-center bg-space-900">
+    <div class="w-full max-w-4xl text-center mb-6 flex flex-col md:flex-row justify-between items-center gap-4">
+       <div class="bg-space-800 border border-neonBlue text-neonBlue px-6 py-3 rounded-2xl font-bold shadow-[0_0_10px_rgba(5,217,232,0.3)] flex flex-wrap justify-center items-center gap-x-4 gap-y-2 w-full md:w-auto">
+         <span>กัปตัน: <span id="displayPlayerName" class="text-white">Unknown</span></span>
+         <span class="text-gold md:border-l border-slate-700 md:pl-4">⭐ แต้มสะสม: <span id="displayScore">0</span></span>
+       </div>
+       <div class="flex gap-2 w-full md:w-auto">
+           <button onclick="fetchLeaderboard()" class="flex-1 md:flex-none text-gold hover:bg-space-700 font-bold transition flex justify-center items-center gap-2 bg-space-800 px-4 py-3 rounded-xl border border-gold">🏆 อันดับ</button>
+           <button onclick="logout()" class="flex-1 md:flex-none text-laserPink hover:bg-space-700 font-bold transition flex justify-center items-center gap-2 bg-space-800 px-4 py-3 rounded-xl border border-laserPink">🚪 ออกจากระบบ</button>
+       </div>
+    </div>
+    <h1 class="text-2xl sm:text-3xl font-black text-white mb-6 uppercase tracking-widest text-center flex items-center justify-center gap-3">🗺️ แผนที่กาแล็กซี</h1>
+    <div id="galactic-map"></div>
+  </div>
+
+  <script>
+    document.write(Array.from({length: 22}, (_, i) => i + 1).map(i => `
+      <div id="view-level-${i}" class="view-screen min-h-screen flex-col pb-12 bg-space-900">
+        <header class="border-b border-slate-700 bg-space-900/95 sticky top-0 z-40 px-4 py-3 shadow-md">
+          <div class="max-w-4xl mx-auto flex items-center justify-between">
+            <button onclick="goToMap()" class="text-slate-300 hover:text-white font-bold text-sm bg-space-800 px-3 py-1.5 rounded-lg border border-slate-700">← ถอยทัพ</button>
+            <div class="flex items-center gap-2 sm:gap-4">
+              <h1 class="text-sm sm:text-lg font-black text-white tracking-wider hidden sm:block">ภารกิจที่ ${i}</h1>
+              <span id="hearts-display-${i}" class="text-red-500 font-bold tracking-widest text-xs sm:text-sm bg-black/60 px-2 py-1 rounded-lg border border-red-500/50">❤️❤️❤️</span>
+            </div>
+            <div class="flex items-center gap-3">
+              <span id="timer-display-${i}" class="text-neonBlue font-mono font-bold text-sm md:text-base bg-black px-3 py-1 rounded-lg border border-neonBlue shadow-[0_0_8px_#05d9e8]">00:00</span>
+            </div>
+          </div>
+        </header>
+        <main class="max-w-4xl mx-auto px-2 sm:px-4 py-6 w-full flex-grow flex flex-col justify-center">
+          <div id="l${i}-container" class="bg-space-800 border border-slate-700 rounded-3xl p-4 sm:p-6 shadow-lg relative overflow-hidden flex flex-col min-h-[60vh]"></div>
+        </main>
+      </div>
+    `).join(''));
+  </script>
+
+  <script>
+    // ----------------------------------------------------------------------
+    // 1. SYSTEM AUDIO CONFIGURATION
+    // ----------------------------------------------------------------------
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playTone(freq, type, duration) {
+      if(audioCtx.state === 'suspended') audioCtx.resume();
+      const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
+      osc.type = type; osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+      gain.gain.setValueAtTime(0.1, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+      osc.connect(gain); gain.connect(audioCtx.destination); osc.start(); osc.stop(audioCtx.currentTime + duration);
+    }
+    function getRandom(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+
+    // ----------------------------------------------------------------------
+    // 2. CLOUD SYSTEM CONFIGURATION (Google Apps Script API)
+    // ----------------------------------------------------------------------
+    const GOOGLE_APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxAnS7ffb7_5TEH6OlnG1ho3CyW7QfA4svvb7J9thecWZIFuSPNsRtYKPutmr8G35OEzg/exec"; 
+
+    // GAME STATE (Memory Only)
+    let currentPlayer = "";
+    let playerScore = 0;
+    let playerProgress = 1;
+    let levelScores = {}; // { 1: 150, 2: 200, ... }
+    
+    let timerInt = null;
+    let timeSec = 0;
+    let levelHearts = 3;
+
+    // API Helpers
+    function showLoading(show) {
+        const overlay = document.getElementById('loading-overlay');
+        if(show) { overlay.classList.remove('hidden'); setTimeout(()=>overlay.classList.remove('opacity-0'), 10); } 
+        else { overlay.classList.add('opacity-0'); setTimeout(()=>overlay.classList.add('hidden'), 300); }
+    }
+
+    async function callGAS(payload) {
+        showLoading(true);
+        try {
+            const response = await fetch(GOOGLE_APP_SCRIPT_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'text/plain;charset=utf-8'
+                },
+                body: JSON.stringify(payload)
+            });
+            const result = await response.json();
+            showLoading(false);
+            return result;
+        } catch (error) {
+            showLoading(false);
+            console.error("API Error:", error);
+            alert("เกิดข้อผิดพลาดในการเชื่อมต่อจักรวาล โปรดตรวจสอบอินเทอร์เน็ต หรือเช็คการตั้งค่า Google Apps Script ให้ถูกต้อง");
+            return { success: false, message: "Connection Error" };
+        }
+    }
+
+    async function authenticate(action) {
+        const name = document.getElementById('playerName').value.trim();
+        const pass = document.getElementById('playerPass').value.trim();
+        const msgEl = document.getElementById('auth-msg');
+        
+        if(!name || !pass) { 
+            msgEl.innerHTML = `<span class="animate-pulse">โปรดกรอกชื่อและรหัสผ่านให้ครบถ้วน!</span>`; 
+            playTone(150, 'sawtooth', 0.2); return; 
+        }
+        
+        msgEl.innerText = "";
+        const res = await callGAS({ action: action, username: name, password: pass });
+        
+        if (res.success) {
+            currentPlayer = res.data.username;
+            playerScore = parseInt(res.data.totalScore) || 0;
+            playerProgress = parseInt(res.data.progress) || 1;
+            
+            // FIX 1: ป้องกันบั๊กกรณี GAS ส่ง levelScores กลับมาเป็น String
+            try {
+                levelScores = typeof res.data.levelScores === 'string' ? JSON.parse(res.data.levelScores) : (res.data.levelScores || {});
+            } catch(e) {
+                levelScores = {};
+            }
+            
+            document.getElementById('displayPlayerName').textContent = currentPlayer;
+            document.getElementById('displayScore').innerText = playerScore;
+            document.getElementById('playerPass').value = ""; 
+            
+            playTone(600, 'sine', 0.1); setTimeout(() => playTone(800, 'sine', 0.2), 100);
+            goToMap();
+        } else {
+            msgEl.innerHTML = `<span class="animate-pulse">${res.message}</span>`;
+            playTone(150, 'sawtooth', 0.3);
+        }
+    }
+
+    async function fetchLeaderboard() {
+        const res = await callGAS({ action: 'getLeaderboard' });
+        if (res.success) {
+            const list = document.getElementById('leaderboard-list');
+            list.innerHTML = "";
+            res.data.forEach((p, index) => {
+                let rankTrophy = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index+1}.`;
+                let bgClass = index === 0 ? 'bg-gold/20 border-gold/50' : 'bg-space-800 border-slate-700';
+                let textColor = index < 3 ? 'text-gold' : 'text-slate-300';
+                
+                list.innerHTML += `
+                <div class="flex items-center justify-between p-3 rounded-xl border ${bgClass}">
+                    <div class="flex items-center gap-3">
+                        <span class="text-xl w-8 text-center font-black ${textColor}">${rankTrophy}</span>
+                        <span class="font-bold text-white text-base truncate max-w-[120px] sm:max-w-[200px]">${p.username}</span>
+                    </div>
+                    <div class="text-right shrink-0">
+                        <div class="text-gold font-black text-lg">${parseInt(p.score).toLocaleString()} <span class="text-xs text-slate-400 font-normal">แต้ม</span></div>
+                        <div class="text-xs text-neonBlue bg-space-900 px-2 py-0.5 rounded-full inline-block border border-slate-700 mt-1">ถึงด่าน ${p.progress}</div>
+                    </div>
+                </div>`;
+            });
+            if(res.data.length === 0) list.innerHTML = `<p class="text-center text-slate-400 py-4">ยังไม่มีกัปตันในระบบ</p>`;
+            openModal('leaderboardModal');
+        }
+    }
+
+    async function fetchDashboard() {
+        const res = await callGAS({ action: 'getDashboard' });
+        if (res.success) {
+            const list = document.getElementById('dashboard-list');
+            list.innerHTML = "";
+            res.data.forEach((p) => {
+                let d = new Date(p.lastUpdate);
+                let dateStr = `${d.getDate()}/${d.getMonth()+1}/${d.getFullYear()} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
+                
+                list.innerHTML += `
+                <tr class="hover:bg-space-700/50 transition">
+                    <td class="p-4 font-bold text-white flex items-center gap-2">👨‍🚀 ${p.username}</td>
+                    <td class="p-4 text-center text-gold font-black">${parseInt(p.score).toLocaleString()}</td>
+                    <td class="p-4 text-center"><span class="bg-neonBlue/20 text-neonBlue px-2 py-1 rounded text-xs font-bold border border-neonBlue/30">ด่าน ${p.progress}</span></td>
+                    <td class="p-4 text-right text-slate-400 text-xs font-mono">${dateStr}</td>
+                </tr>`;
+            });
+            if(res.data.length === 0) list.innerHTML = `<tr><td colspan="4" class="text-center text-slate-400 py-6">ยังไม่มีข้อมูล</td></tr>`;
+            openModal('dashboardModal');
+        }
+    }
+
+    function openModal(id) { document.getElementById(id).classList.add('active'); playTone(400, 'sine', 0.1); }
+    function closeModal(id) { document.getElementById(id).classList.remove('active'); playTone(300, 'sine', 0.1); }
+    function hideAll() { document.querySelectorAll('.view-screen').forEach(e => e.classList.remove('active')); }
+
+    function updateScoreDisplay() {
+        const disp = document.getElementById('displayScore');
+        if(disp) disp.innerText = playerScore.toLocaleString();
+    }
+
+    function loseHeart(id) {
+        levelHearts--;
+        updateHeartDisplay(id);
+        playTone(150, 'sawtooth', 0.3);
+        if(levelHearts <= 0) {
+            // ป้องกันการล้างหน้าจอ Game Over แบบเก่าสำหรับโหมด Runner (ด่าน 17-21)
+            // เพื่อเปิดทางให้ระบบ "ซ่อมยานแล้วลุยต่อที่ขั้นเดิม" ทำงานได้
+            if (id >= 17 && id <= 21) {
+                return true; // คืนค่า isDead = true ไปให้ RunnerMathEngine จัดการ
+            }
+            triggerGameOver(id);
+            return true; // isDead
+        }
+        return false;
+    }
+
+    function updateHeartDisplay(id) {
+        const el = document.getElementById(`hearts-display-${id}`);
+        if(el) {
+            let heartsStr = '';
+            for(let h=0; h<3; h++) { heartsStr += h < levelHearts ? '❤️' : '🖤'; }
+            el.innerText = heartsStr;
+        }
+    }
+
+    function triggerGameOver(id) {
+        stopTimer();
+        playTone(100, 'square', 0.6);
+        document.getElementById(`l${id}-container`).innerHTML = `
+        <div class="text-center py-12 animate-fade m-auto">
+            <div class="text-7xl mb-4">💔</div>
+            <h2 class="text-2xl sm:text-3xl font-black text-dangerRed mb-2">พลังงานยานหมด (Game Over)</h2>
+            <p class="text-slate-300 mb-2 text-sm sm:text-base">หัวใจหมดทั้ง 3 ดวงแล้วในภารกิจนี้ (-50 แต้มต่อครั้งที่พลาด)</p>
+            <button onclick="startLevel(${id})" class="mt-6 px-8 py-3 bg-neonBlue text-space-900 font-black rounded-xl hover:brightness-110 shadow-[0_0_15px_rgba(5,217,232,0.5)]">ซ่อมแซมยานและเริ่มใหม่ 🚀</button>
+        </div>`;
+    }
+
+    function logout() {
+      currentPlayer = ""; playerScore = 0; playerProgress = 1; levelScores = {}; stopTimer(); hideAll(); 
+      document.getElementById('view-start').classList.add('active');
+    }
+
+    function goToMap() {
+      stopTimer();
+      RunnerMathEngine.state.runnerActive = false; // Stop runner ghost loops
+      RunnerMathEngine.state.isPaused = true;
+      cancelAnimationFrame(RunnerMathEngine.animationFrameId);
+      
+      hideAll(); 
+      document.getElementById('view-menu').classList.add('active');
+      updateScoreDisplay();
+      renderMap(); 
+      playTone(400, 'sine', 0.1);
+    }
+
+    function renderMap() {
+      const map = document.getElementById('galactic-map'); map.innerHTML = '';
+      for(let i=1; i<=22; i++) {
+        const p = document.createElement('div'); p.className = 'planet-node';
+        if (i <= playerProgress) {
+            p.classList.add('completed'); p.innerHTML = `${i}<br>⭐`;
+            p.onclick = () => { playTone(500,'sine',0.1); startLevel(i); };
+        } else if (i === playerProgress + 1) {
+            p.classList.add('unlocked'); p.innerHTML = `${i}<br>▶`;
+            p.onclick = () => { playTone(500,'sine',0.1); startLevel(i); };
+        } else {
+            p.classList.add('locked'); p.innerHTML = `${i}`;
+        }
+        map.appendChild(p);
+      }
+    }
+
+    function startTimer(id) {
+        clearInterval(timerInt); timeSec = 0;
+        const d = document.getElementById(`timer-display-${id}`);
+        if(d) d.innerText = "00:00";
+        timerInt = setInterval(() => {
+            timeSec++;
+            let m = String(Math.floor(timeSec/60)).padStart(2,'0');
+            let s = String(timeSec%60).padStart(2,'0');
+            if(d) d.innerText = `${m}:${s}`;
+        }, 1000);
+    }
+    function stopTimer() { clearInterval(timerInt); }
+
+    function calculateTimeBonus(seconds) {
+        if (seconds < 60) return (60 - seconds) === 1 ? 200 : (60 - seconds) * 100;
+        if (seconds < 90) return 150;
+        if (seconds < 120) return 100;
+        if (seconds < 180) return 50;
+        if (seconds < 300) return 25;
+        return 5;
+    }
+
+    async function completeLevel(id) {
+        stopTimer();
+        let timeBonus = calculateTimeBonus(timeSec);
+        let baseEarn = 100;
+        let totalReward = baseEarn + timeBonus; // คะแนนรอบนี้
+        let nextProg = Math.max(playerProgress, id + 1);
+        
+        let oldMaxScore = levelScores[id] || 0;
+        let isNewHigh = totalReward > oldMaxScore;
+
+        playTone(523, 'sine', 0.1); setTimeout(() => playTone(784, 'sine', 0.2), 200); setTimeout(() => playTone(1046, 'sine', 0.4), 400);
+        let timeStr = document.getElementById(`timer-display-${id}`).innerText;
+        
+        const container = document.getElementById(`l${id}-container`);
+        container.className = "bg-space-800 border border-slate-700 rounded-3xl p-6 shadow-lg relative overflow-hidden flex flex-col justify-center min-h-[60vh]";
+        
+        let uiHtml = `<div class="text-center animate-fade m-auto"><div class="text-7xl mb-4">🏆</div><h2 class="text-3xl font-black text-gold mb-2">เป้าหมายถูกทำลาย!</h2>`;
+        uiHtml += `<p class="text-slate-300 mb-2">เวลาที่ใช้: <span class="text-neonBlue font-mono">${timeStr}</span> | โบนัสเวลา +${timeBonus} แต้ม</p>`;
+        uiHtml += `<p class="text-white mb-4 text-xl">คะแนนที่ได้รอบนี้: <span class="font-bold text-emerald-400">${totalReward}</span> แต้ม</p>`;
+        
+        if (isNewHigh) {
+            uiHtml += `<p class="bg-gold/20 text-gold border border-gold p-2 rounded-lg font-bold mb-6 animate-bounce inline-block">🎉 ทำลายสถิติเดิมของด่านนี้! (สถิติเดิม: ${oldMaxScore})</p>`;
+            uiHtml += `<p id="sync-msg-${id}" class="text-neonBlue mb-4 text-sm animate-pulse">กำลังอัปเดตข้อมูลขึ้นยานแม่ (Cloud)...</p>`;
+        } else {
+            uiHtml += `<p class="bg-space-900 text-slate-400 border border-slate-700 p-2 rounded-lg text-sm mb-6 inline-block">สถิติสูงสุดของด่านนี้ที่คุณทำไว้คือ ${oldMaxScore} แต้ม (ไม่บันทึกซ้ำ)</p>`;
+        }
+        
+        let shouldSync = isNewHigh || nextProg > playerProgress;
+        uiHtml += `<button id="btn-return-map-${id}" onclick="goToMap()" class="px-8 py-3 bg-gold text-black font-black rounded-xl hover:brightness-110 shadow-[0_0_15px_rgba(255,215,0,0.5)] transition ${shouldSync ? 'hidden' : ''} mt-4 mx-auto block">กลับแผนที่อวกาศ 🚀</button></div>`;
+        container.innerHTML = uiHtml;
+
+        // Sync to Cloud
+        if (shouldSync) {
+            // คำนวณคะแนนรวมสำรองไว้ เผื่อ GAS ต้องการค่านี้ไปบันทึกโดยตรง
+            let scoreDiff = isNewHigh ? (totalReward - oldMaxScore) : 0;
+            let calculatedTotal = playerScore + scoreDiff;
+            let tempLevelScores = { ...levelScores };
+            if (isNewHigh) tempLevelScores[id] = totalReward;
+
+            const res = await callGAS({
+                action: 'updateScore', 
+                username: currentPlayer, 
+                level: id, 
+                score: totalReward, 
+                nextProgress: nextProg,
+                totalScore: calculatedTotal, // แบ็คอัปข้อมูล
+                levelScores: JSON.stringify(tempLevelScores) // แบ็คอัปข้อมูล
+            });
+            
+            if (res.success) {
+                if (isNewHigh) levelScores[id] = totalReward;
+                
+                // FIX 2: ป้องกันตัวแปรกลายเป็น undefined จากโครงสร้าง GAS ที่ไม่ตรงกัน
+                if (res.data) {
+                    playerScore = res.data.totalScore !== undefined ? parseInt(res.data.totalScore) : calculatedTotal;
+                    playerProgress = res.data.progress !== undefined ? parseInt(res.data.progress) : nextProg;
+                } else {
+                    playerScore = res.newTotalScore !== undefined ? parseInt(res.newTotalScore) : (res.totalScore !== undefined ? parseInt(res.totalScore) : calculatedTotal);
+                    playerProgress = res.progress !== undefined ? parseInt(res.progress) : nextProg;
+                }
+                
+                const msg = document.getElementById(`sync-msg-${id}`);
+                if(msg) { msg.classList.remove('animate-pulse', 'text-neonBlue'); msg.classList.add('text-emerald-400'); msg.innerText = "✔️ บันทึกข้อมูลขึ้น Cloud สำเร็จ!"; }
+                
+                const btn = document.getElementById(`btn-return-map-${id}`);
+                if(btn) { btn.classList.remove('hidden'); btn.innerText = "บันทึกสำเร็จ! กลับแผนที่ 🚀"; }
+            } else {
+                const msg = document.getElementById(`sync-msg-${id}`);
+                if(msg) { msg.classList.remove('animate-pulse', 'text-neonBlue'); msg.classList.add('text-dangerRed'); msg.innerText = "❌ เกิดข้อผิดพลาดในการบันทึก"; }
+                const btn = document.getElementById(`btn-return-map-${id}`);
+                if(btn) btn.classList.remove('hidden');
+            }
+        }
+    }
+
+    function startLevel(id) {
+        hideAll(); 
+        const v = document.getElementById(`view-level-${id}`);
+        if(v) v.classList.add('active');
+        levelHearts = 3;
+        updateHeartDisplay(id);
+        
+        // -------------------------------------------------------------
+        // BUG FIX: AGGRESSIVE DOM CLEANSING (Prevents Canvas ID Collisions)
+        // -------------------------------------------------------------
+        // We must clear ALL containers before starting a new level.
+        // If we don't, RunnerMathEngine will find the <canvas id="rm-game-canvas"> 
+        // from a previously played level instead of the current one, causing a blank screen.
+        for (let i = 1; i <= 22; i++) {
+            const container = document.getElementById(`l${i}-container`);
+            if (container) {
+                container.innerHTML = '';
+                // Reset to standard classes, specific engines (like Runner) will override this in their init()
+                container.className = "bg-space-800 border border-slate-700 rounded-3xl p-4 sm:p-6 shadow-lg relative overflow-hidden flex flex-col min-h-[60vh]";
+            }
+        }
+        // -------------------------------------------------------------
+
+        startTimer(id);
+        
+        if(id === 15) { l15_initGame(); }
+        else if(id >= 17 && id <= 21) { RunnerMathEngine.init(id); }
+        else if(id === 22) { l22_initGame(); }
+        else { MathEngine.init(id); }
+    }
+
+    const MathEngine = {
+      state: {},
+      configs: {
+        1: { type:'mult_grid_1', aL:[1000,9999], bL:[2,9], c:'neonBlue' },
+        2: { type:'mult_grid_zero', bType:'10s', c:'gold' },
+        3: { type:'mult_grid_zero', bType:'100s', c:'emerald-400' },
+        4: { type:'mult_grid', aL:[100,999], bL:[11,99], c:'shieldCyan' },
+        5: { type:'mult_grid', aL:[101,999], bL:[101,999], c:'marsOrange' },
+        6: { type:'mult_grid', aL:[1001,9999], bL:[101,999], c:'dangerRed', boss:true },
+        7: { type:'div_zero', c:'neonBlue' },
+        8: { type:'div_grid', bL:[2,9], ansL:[1000,9999], rem:false, c:'gold' },
+        9: { type:'div_grid', bL:[2,9], ansL:[1000,9999], rem:true, c:'laserPink' },
+        10:{ type:'div_grid', bL:[10,90], step:10, ansL:[10,99], rem:true, c:'shieldCyan' },
+        11:{ type:'div_grid', bL:[11,99], ansL:[100,999], rem:true, c:'marsOrange' },
+        12:{ type:'div_grid', bL:[101,999], ansL:[100,999], rem:false, c:'emerald-400' },
+        13:{ type:'div_grid', bL:[101,999], ansL:[10,99], rem:true, c:'dangerRed', boss:true },
+        14:{ type:'missing', op:'mult', c:'neonBlue' },
+        16:{ type:'missing', op:'div', c:'dangerRed' }
+      },
+      init: function(id) {
+          this.state = { id: id, cfg: this.configs[id], step: 1 };
+          this.generate(); this.renderStep1();
+      },
+      generate: function() {
+          let s = this.state, c = s.cfg;
+          let A, B, ans, rem = 0;
+          if(c.type.includes('mult_grid')) {
+              if (c.type === 'mult_grid_zero') {
+                  A = getRandom(11, 999); s.zeroes = c.bType === '10s' ? 1 : getRandom(2,3);
+                  B = getRandom(1,9) * Math.pow(10, s.zeroes);
+              } else {
+                  A = getRandom(c.aL[0], c.aL[1]); B = getRandom(c.bL[0], c.bL[1]);
+              }
+              ans = A * B;
+              s.eq = `${A.toLocaleString()} × ${B.toLocaleString()} = □`;
+          } else if(c.type === 'div_grid') {
+              B = c.step ? Math.floor(getRandom(c.bL[0],c.bL[1])/10)*10 : getRandom(c.bL[0],c.bL[1]); if(B===0)B=10;
+              ans = getRandom(c.ansL[0], c.ansL[1]); rem = c.rem ? getRandom(1, B-1) : 0;
+              A = (B * ans) + rem; s.eq = `${A.toLocaleString()} ÷ ${B.toLocaleString()} = □`;
+          } else if(c.type === 'div_zero') {
+              B = getRandom(2,9); ans = getRandom(2,12) * Math.pow(10, getRandom(1,3));
+              A = B * ans; s.eq = `${A.toLocaleString()} ÷ ${B.toLocaleString()} = □`;
+          } else if(c.type === 'missing') {
+              if(c.op === 'mult') {
+                  A = getRandom(11, 99); ans = getRandom(11, 99); B = A * ans;
+                  s.eq = `□ × ${A.toLocaleString()} = ${B.toLocaleString()}`;
+              } else {
+                  B = getRandom(11, 99); let q = getRandom(100, 999); ans = B * q;
+                  s.eq = `□ ÷ ${B.toLocaleString()} = ${q.toLocaleString()}`;
+                  A = q; // แก้ไข: ดึงผลหาร (q) มาเป็นตัวตั้งในการคำนวณแทน เพื่อหาค่า □
+              }
+          }
+          s.A = A; s.B = B; s.ans = ans; s.rem = rem;
+      },
+      
+      renderStep1: function() {
+          let s = this.state, c = s.cfg;
+          let correct = c.type === 'missing' ? 'หาค่าของตัวเลขที่หายไป' : (c.type.includes('mult') ? 'หาผลคูณ' : 'หาผลหาร');
+          let allOps = ['หาผลบวก', 'หาผลลบ', 'หาผลคูณ', 'หาผลหาร', 'หาค่าของตัวเลขที่หายไป'];
+          if(c.type !== 'missing') allOps = ['หาผลบวก', 'หาผลลบ', 'หาผลคูณ', 'หาผลหาร'];
+          
+          let opts = allOps.sort(()=>Math.random()-0.5).slice(0, 4);
+          if(!opts.includes(correct)) { opts[getRandom(0,3)] = correct; }
+          
+          let h = `<div class="mb-4 border-b border-slate-700 pb-2 flex items-center justify-between"><span class="text-${c.c} font-bold text-sm">📡 ขั้นที่ 1: สแกนจุดอ่อนเป้าหมาย</span><span class="text-xs text-slate-400">ทำความเข้าใจปัญหา</span></div>
+          ${c.boss ? `<div class="bg-red-900/40 text-red-400 font-bold text-center py-1 mb-2 rounded animate-pulse border border-red-500">⚠ BOSS DETECTED ⚠️</div>` : ''}
+          <div class="bg-space-900 p-6 rounded-xl text-center mb-4 border border-slate-700 relative overflow-hidden">
+             <div class="absolute top-0 left-1/2 w-full h-full border-t-2 radar-scan origin-bottom-left -ml-[50%]"></div>
+             <div class="text-5xl mb-2 relative z-10 animate-bounce">${c.boss ? '👾' : '☄️'}</div>
+             <div class="text-2xl md:text-3xl font-mono text-white my-2 font-bold relative z-10 bg-black/50 p-2 rounded shadow-[0_0_10px_rgba(255,255,255,0.2)]">${s.eq}</div>
+             <p class="text-sm text-slate-300 relative z-10 mt-2">เรดาร์ตรวจพบจุดอ่อน... เป้าหมายต้องการให้เราทำอะไร?</p>
+          </div>
+          <div class="grid gap-3">
+             ${opts.map((o,i) => `<button onclick="MathEngine.checkStep1('${o === correct}')" class="p-3 bg-space-800 border border-slate-600 rounded-lg text-left hover:border-${c.c} transition hover:bg-space-700">${i+1}. ${o}</button>`).join('')}
+          </div><div id="l${s.id}_m-msg" class="h-6 text-center font-bold mt-2 text-sm"></div>`;
+          document.getElementById(`l${s.id}-container`).innerHTML = h;
+      },
+      checkStep1: function(isCorrect) {
+          if(isCorrect === 'true') { 
+              playTone(800,'sine',0.1); 
+              this.renderStep2(); 
+          } else { 
+              loseHeart(this.state.id);
+              document.getElementById(`l${this.state.id}_m-msg`).innerHTML = `<span class="text-laserPink animate-pulse">สแกนพลาด! เสีย 1 หัวใจ</span>`; 
+          }
+      },
+      renderStep2: function() {
+          let s = this.state, c = s.cfg;
+          let h = `<div class="mb-4 border-b border-slate-700 pb-2 flex items-center justify-between"><span class="text-${c.c} font-bold text-sm">🛠️ ขั้นที่ 2: ประกอบอาวุธ</span><span class="text-xs text-slate-400">วางแผนแก้ปัญหา</span></div>
+          <div class="text-center mb-6 m-auto">
+             <p class="text-slate-300 mb-4">เลือกอาวุธที่ถูกต้องเพื่อจัดการเป้าหมาย (แตะเพื่อติดตั้ง)</p>
+             <div class="flex justify-center gap-6 mb-8">
+                 <div onclick="MathEngine.equipWeapon('mult')" class="w-20 h-20 bg-space-800 border-2 border-slate-500 rounded-xl text-5xl flex items-center justify-center cursor-pointer hover:border-neonBlue hover:bg-space-700 transition shadow-lg">×</div>
+                 <div onclick="MathEngine.equipWeapon('div')" class="w-20 h-20 bg-space-800 border-2 border-slate-500 rounded-xl text-5xl flex items-center justify-center cursor-pointer hover:border-laserPink hover:bg-space-700 transition shadow-lg">÷</div>
+             </div>
+             <div id="l${s.id}_weapon-slot" class="w-28 h-28 mx-auto border-4 border-dashed border-${c.c} rounded-2xl flex items-center justify-center text-slate-500 bg-space-900/50 shadow-[0_0_15px_rgba(255,255,255,0.1)] transition-all">
+                 <span class="text-sm">ช่องติดตั้ง<br>อาวุธ</span>
+             </div>
+             <div id="l${s.id}_m-err-2" class="text-laserPink font-bold text-sm mt-4 h-6"></div>
+          </div>`;
+          document.getElementById(`l${s.id}-container`).innerHTML = h;
+      },
+      equipWeapon: function(op) {
+          let s = this.state, c = s.cfg;
+          let correctOp = 'mult';
+          if(c.type === 'missing') { correctOp = c.op === 'mult' ? 'div' : 'mult'; } 
+          else { correctOp = c.type.includes('mult') ? 'mult' : 'div'; }
+
+          if(op === correctOp) {
+              playTone(800,'sine',0.1);
+              document.getElementById(`l${s.id}_weapon-slot`).innerHTML = `<div class="text-5xl text-${c.c} font-bold animate-bounce">${op==='mult'?'×':'÷'}</div>`;
+              document.getElementById(`l${s.id}_weapon-slot`).classList.replace('border-dashed', 'border-solid');
+              setTimeout(() => this.renderStep3(), 800);
+          } else {
+              loseHeart(s.id);
+              document.getElementById(`l${s.id}_m-err-2`).innerHTML = `<span class="animate-pulse">อาวุธผิดประเภท! เสีย 1 หัวใจ</span>`;
+          }
+      },
+      updateEnergy: function() {
+          const id = this.state.id;
+          const inputs = document.querySelectorAll(`#l${id}-container input[type="text"], #l${id}-container input[type="number"]`);
+          if(!inputs.length) return;
+          const filled = Array.from(inputs).filter(i => i.value.trim() !== '').length;
+          const pct = Math.min((filled / inputs.length) * 100, 100);
+          const bar = document.getElementById(`energy-bar-${id}`);
+          if(bar) {
+              bar.style.width = `${pct}%`;
+              if(pct > 0) playTone(400 + (pct*5), 'sine', 0.05);
+          }
+      },
+
+      renderStep3: function() {
+          let s = this.state, c = s.cfg;
+          let h = `<div class="mb-4 border-b border-slate-700 pb-2 flex items-center justify-between"><span class="text-${c.c} font-bold text-sm">⚡ ขั้นที่ 3: ชาร์จพลังงานยานรบ</span><span class="text-xs text-slate-400">ดำเนินการตามแผน</span></div>
+          <div class="flex flex-col items-center w-full m-auto">`;
+          
+          let isMultGrid = c.type.includes('mult_grid') || (c.type === 'missing' && c.op === 'div');
+          let isDivGrid = c.type === 'div_grid' || (c.type === 'missing' && c.op === 'mult');
+
+          if(isMultGrid) {
+              let aStr = String(s.A), bStr = String(s.B), ansStr = String(s.ans), bRev = bStr.split('').reverse();
+              const isSingleRow = (c.type === 'mult_grid_1' || c.type === 'mult_grid_zero' || bRev.length === 1);
+              
+              const genGridCells = (str, isTopOp=false, opSymbol='') => {
+                  let html = `<div class="flex justify-end gap-1 mb-1">`;
+                  if(opSymbol) html += `<div class="w-8 h-8 sm:w-10 sm:h-10 flex items-end justify-center font-bold text-xl sm:text-2xl text-laserPink pb-1">${opSymbol}</div>`;
+                  else if(isTopOp) html += `<div class="w-8 h-8 sm:w-10 sm:h-10"></div>`;
+                  for(let char of str) { html += `<div class="w-8 h-8 sm:w-10 sm:h-10 flex items-end justify-center font-black text-xl sm:text-2xl text-black pb-1 bg-white rounded border border-slate-300 shadow-sm">${char}</div>`; }
+                  return html + `</div>`;
+              };
+
+              const genCarryInputs = (idSuffix, len) => {
+                  let html = `<div class="flex justify-end gap-1 mb-1"><div class="w-8 h-6 sm:w-10 sm:h-8"></div>`; 
+                  for(let i=0; i<len; i++) {
+                      html += `<div class="w-8 h-6 sm:w-10 sm:h-8 flex items-center justify-center"><input type="text" id="l${s.id}_${idSuffix}_${i}" maxlength="1" class="w-5 h-5 sm:w-6 sm:h-6 rounded-full border border-laserPink bg-space-800 text-laserPink text-center text-xs font-bold outline-none focus:bg-laserPink focus:text-white" oninput="this.value=this.value.replace(/[^0-9]/g,''); if(this.value && this.previousElementSibling) this.previousElementSibling.focus(); MathEngine.updateEnergy();"></div>`;
+                  }
+                  return html + `</div>`;
+              };
+
+              const genRowInputs = (idSuffix, len) => {
+                  let html = `<div class="flex justify-end gap-1">`;
+                  for(let i=0; i<len; i++) {
+                      html += `<div class="w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center"><input type="text" id="l${s.id}_${idSuffix}_${i}" maxlength="1" class="w-full h-full text-center text-black font-black text-lg sm:text-xl rounded border-2 border-slate-400 focus:border-neonBlue focus:bg-blue-50 outline-none transition" oninput="this.value=this.value.replace(/[^0-9]/g,''); if(this.value && this.nextElementSibling) this.nextElementSibling.focus(); MathEngine.updateEnergy();"></div>`;
+                  }
+                  return html + `</div>`;
+              };
+
+              h += `<div class="bg-slate-200 p-3 sm:p-6 rounded-2xl shadow-lg border-4 border-slate-300 w-fit overflow-x-auto mx-auto max-w-full">`;
+              h += genCarryInputs('carry', aStr.length);
+              h += genGridCells(aStr, true);
+              h += genGridCells(bStr, false, '×');
+              
+              if(isSingleRow) {
+                  h += `<div class="border-b-4 border-black pb-2 mb-3"></div>`;
+                  h += genRowInputs('ans', ansStr.length);
+              } else {
+                  h += `<div class="border-b-4 border-black pb-2 mb-3"></div>`;
+                  bRev.forEach((d, i) => {
+                      let expectedVal = s.A * parseInt(d) * Math.pow(10, i);
+                      let rLen = String(expectedVal).length;
+                      let isLastRow = (i === bRev.length - 1);
+                      h += `<div class="flex items-center justify-end gap-1 ${isLastRow ? 'mb-2' : 'mb-2'}">`;
+                      if(isLastRow) h += `<div class="w-6 h-8 sm:w-8 sm:h-10 flex items-center justify-center font-black text-xl sm:text-2xl text-laserPink">+</div>`;
+                      h += genRowInputs('p'+i, rLen);
+                      h += `</div>`;
+                  });
+                  h += `<div class="border-b-4 border-double border-black pb-1 mb-3"></div>`;
+                  h += genRowInputs('ans', ansStr.length);
+              }
+              h += `</div>`;
+          } 
+          else if(isDivGrid) {
+              let divisor = c.type === 'missing' ? (c.op === 'mult' ? s.A : s.B) : s.B;
+              let dividend = c.type === 'missing' ? (c.op === 'mult' ? s.B : s.A) : s.A;
+              let targetAns = s.ans;
+              
+              const createInputsBox = (idSuffix, len) => Array.from({length:len}).map((_,i)=>`<input type="text" id="l${s.id}_${idSuffix}_${i}" maxlength="1" class="w-8 h-10 md:w-10 md:h-12 text-center text-black font-black text-xl mx-0.5 rounded border-2 border-slate-400 focus:border-neonBlue focus:bg-blue-50 outline-none transition" oninput="this.value=this.value.replace(/[^0-9]/g,''); if(this.value && this.nextElementSibling) this.nextElementSibling.focus(); MathEngine.updateEnergy();">`).join('');
+
+              h += `<div class="bg-slate-200 p-4 md:p-6 rounded-2xl shadow-lg border-4 border-slate-300 w-fit max-w-full overflow-x-auto">
+                    <div class="flex items-center justify-end mb-2 space-x-2 w-full"><span class="text-sm font-bold text-slate-600">ผลหาร:</span><div class="flex">${createInputsBox('q', String(targetAns).length)}</div></div>
+                    <div class="flex justify-end text-2xl md:text-4xl font-mono text-black w-full">
+                        <div class="pr-2 pt-2">${divisor}</div>
+                        <div class="border-l-4 border-t-4 border-black pl-3 pt-2 pb-2 rounded-tl-xl tracking-[0.2em]">${dividend}</div>
+                    </div>
+                    ${s.rem > 0 ? `<div class="flex items-center justify-end mt-4 space-x-2 w-full"><span class="text-sm font-bold text-slate-600">เศษ:</span><div class="flex">${createInputsBox('r', String(s.rem).length)}</div></div>` : ''}
+                    </div>`;
+          } 
+          else if(c.type === 'div_zero') {
+              h += `<div class="bg-slate-800 p-6 rounded-xl border border-${c.c} w-full max-w-sm text-center shadow-[0_0_15px_rgba(0,0,0,0.5)]">
+                    <div class="text-3xl font-mono text-white mb-6 bg-black p-4 rounded-lg">${s.eq.replace('□','')}</div>
+                    <input type="number" id="l${s.id}_z_ans" placeholder="พิมพ์ผลลัพธ์..." class="w-full py-4 text-center text-3xl font-bold bg-white text-black border-4 border-${c.c} rounded-xl outline-none focus:scale-105 transition" oninput="MathEngine.updateEnergy()">
+                    </div>`;
+          }
+          
+          h += `<div class="w-full max-w-sm mt-6">
+                  <div class="flex justify-between text-xs text-neonBlue font-bold mb-1"><span>พลังงานปืนใหญ่</span><span>MAX</span></div>
+                  <div class="w-full bg-space-900 rounded-full h-4 border border-slate-700 overflow-hidden shadow-inner">
+                      <div id="energy-bar-${s.id}" class="h-full bg-neonBlue w-0 transition-all duration-300 shadow-[0_0_10px_#05d9e8]"></div>
+                  </div>
+                </div>
+                <button onclick="MathEngine.verifyStep3()" class="mt-4 w-full max-w-sm py-3 bg-${c.c} text-black font-black text-lg rounded-xl hover:brightness-110 shadow-[0_4px_0_#000] active:translate-y-1">โหลดกระสุน ยืนยันพิกัด! ⚡</button>
+                <div id="l${s.id}_m-err" class="text-laserPink font-bold text-sm mt-3 h-6"></div></div>`;
+          document.getElementById(`l${s.id}-container`).innerHTML = h;
+      },
+
+      getInputsVal: function(idSuffix, len) {
+          let v=''; 
+          for(let i=0; i<len; i++) { v += document.getElementById(`l${this.state.id}_${idSuffix}_${i}`)?.value || ''; }
+          return v === '' ? null : parseInt(v);
+      },
+      
+      verifyStep3: function() {
+          let s = this.state, c = s.cfg, ok = true, msg = '';
+          let isMultGrid = c.type.includes('mult_grid') || (c.type === 'missing' && c.op === 'div');
+          let isDivGrid = c.type === 'div_grid' || (c.type === 'missing' && c.op === 'mult');
+
+          if(isMultGrid) {
+              let bRev = String(s.B).split('').reverse();
+              if(bRev.length > 1 && c.type !== 'mult_grid_1' && c.type !== 'mult_grid_zero') {
+                  bRev.forEach((d,i) => {
+                      let expectedVal = s.A * parseInt(d) * Math.pow(10,i);
+                      let rLen = String(expectedVal).length;
+                      if(this.getInputsVal('p'+i, rLen) !== expectedVal) { ok = false; msg = `ผลคูณย่อยบรรทัดที่ ${i+1} ไม่ถูกต้อง`; }
+                  });
+              }
+              if(this.getInputsVal('ans', String(s.ans).length) !== s.ans) { ok = false; if(msg==='') msg = 'ผลคูณสุดท้ายยังไม่ถูกต้อง'; }
+          } else if(isDivGrid) {
+              if(this.getInputsVal('q', String(s.ans).length) !== s.ans) ok = false;
+              if(s.rem > 0 && this.getInputsVal('r', String(s.rem).length) !== s.rem) ok = false;
+          } else {
+              if(parseInt(document.getElementById(`l${s.id}_z_ans`)?.value) !== s.ans) ok = false;
+          }
+          
+          if(ok) { 
+              playTone(800,'sine',0.1); 
+              this.renderStep4(); 
+          } else { 
+              loseHeart(s.id);
+              document.getElementById(`l${s.id}_m-err`).innerHTML = `<span class="animate-pulse">${msg || 'คำนวณพลาด! เสีย 1 หัวใจ'}</span>`; 
+              const bar = document.getElementById(`energy-bar-${s.id}`);
+              if(bar) { bar.style.backgroundColor = '#ff2a6d'; setTimeout(()=>bar.style.backgroundColor = '#05d9e8', 500); }
+          }
+      },
+      
+      renderStep4: function() {
+          let s = this.state, c = s.cfg, eqStr = '';
+          if(c.type === 'missing') {
+              if(c.op === 'mult') eqStr = `${s.ans.toLocaleString()} × ${s.A.toLocaleString()} = ${s.B.toLocaleString()}`;
+              else eqStr = `${s.ans.toLocaleString()} ÷ ${s.B.toLocaleString()} = ${s.A.toLocaleString()}`; 
+          } else if(c.type.includes('mult')) {
+              eqStr = `${s.ans.toLocaleString()} ÷ ${s.B.toLocaleString()} = ${s.A.toLocaleString()}`;
+          } else if(c.type.includes('div')) {
+              eqStr = `(${s.ans.toLocaleString()} × ${s.B.toLocaleString()}) ${s.rem>0?`+ ${s.rem}`:''} = ${s.A.toLocaleString()}`;
+          } else { eqStr = `ตรวจสอบความถูกต้องเรียบร้อย`; }
+          
+          let h = `<div class="mb-4 border-b border-slate-700 pb-2 flex items-center justify-between"><span class="text-${c.c} font-bold text-sm">🚀 ขั้นที่ 4: โจมตีเป้าหมาย!</span><span class="text-xs text-slate-400">ตรวจสอบผล</span></div>
+          <div class="m-auto w-full">
+              <div id="l${s.id}_battle-scene" class="w-full h-40 relative bg-space-900 rounded-xl overflow-hidden border border-slate-700 mb-6 flex items-center justify-between px-6 shadow-inner">
+                  <div id="l${s.id}_ship" class="text-6xl z-10 transition-transform drop-shadow-[0_0_15px_#05d9e8]">🚀</div>
+                  <div id="l${s.id}_laser" class="absolute left-20 w-0 h-3 bg-${c.c} shadow-[0_0_20px_${c.c}] z-0 transition-all duration-300 rounded-r-full"></div>
+                  <div id="l${s.id}_target" class="text-6xl z-10 animate-bounce drop-shadow-[0_0_15px_#ff003c] transition-all duration-200">${c.boss ? '👾' : '☄️'}</div>
+              </div>
+
+              <div class="bg-space-900 p-4 rounded-xl border border-emerald-400 text-center mb-6 text-emerald-400 font-bold shadow-[0_0_15px_rgba(52,211,153,0.2)] opacity-0 transition-opacity duration-500" id="l${s.id}_verify-box">
+                 <p class="text-lg">✔️ โจมตีสำเร็จ! คำตอบสมเหตุสมผล</p>
+                 <p class="text-sm mt-2 text-slate-300">สมการยืนยัน: ${eqStr}</p>
+              </div>
+              <button id="l${s.id}_finish-btn" onclick="completeLevel(${s.id})" class="w-full py-4 bg-${c.c} text-black font-black text-lg rounded-xl hover:brightness-110 shadow-lg opacity-0 pointer-events-none transition-opacity duration-500">เก็บกู้ซากเป้าหมาย 🏆</button>
+          </div>`;
+          
+          document.getElementById(`l${s.id}-container`).innerHTML = h;
+
+          setTimeout(() => {
+              playTone(600, 'sawtooth', 0.3);
+              let laser = document.getElementById(`l${s.id}_laser`);
+              if(laser) laser.style.width = 'calc(100% - 8rem)';
+              
+              setTimeout(() => {
+                  let target = document.getElementById(`l${s.id}_target`);
+                  let scene = document.getElementById(`l${s.id}_battle-scene`);
+                  if(target) { target.innerHTML = '💥'; target.classList.add('scale-150', 'explode'); playTone(100, 'square', 0.6); }
+                  if(scene) scene.classList.add('shake');
+                  
+                  setTimeout(() => {
+                      document.getElementById(`l${s.id}_verify-box`).classList.remove('opacity-0');
+                      let btn = document.getElementById(`l${s.id}_finish-btn`);
+                      btn.classList.remove('opacity-0', 'pointer-events-none');
+                      playTone(800, 'sine', 0.2); setTimeout(()=>playTone(1200, 'sine', 0.3), 200);
+                  }, 800);
+              }, 300);
+          }, 500);
+      }
+    };
+
+    let l15 = {};
+    function l15_initGame() {
+        let isGreater = Math.random() > 0.5;
+        l15.B = getRandom(12, 85); l15.Q = getRandom(20, 95); l15.A = l15.B * l15.Q;
+        l15.cond = isGreater ? '>' : '<'; l15.target = isGreater ? l15.Q + 1 : l15.Q - 1;
+        document.getElementById('l15-container').innerHTML = `
+        <div class="mb-4 border-b border-slate-700 pb-2 flex justify-between items-center"><span class="text-gold font-bold text-sm">📡 ขั้นที่ 1 & 2: สแกน & วางแผนประมาณค่า</span></div>
+        <div class="m-auto w-full">
+            <div class="bg-space-900 p-5 rounded-xl border border-slate-700 text-center mb-4 relative overflow-hidden">
+               <p class="text-slate-300 relative z-10">ตรวจพบสนามพลังงานกั้นขวาง หาจำนวนนับ □ ที่ทำให้:</p>
+               <div class="text-3xl font-mono text-gold my-4 font-bold relative z-10 bg-black/50 p-2 rounded w-fit mx-auto">${l15.B} × □ ${l15.cond} ${l15.A.toLocaleString()}</div>
+               <p class="text-sm text-slate-400 relative z-10">และใกล้เคียง ${l15.A.toLocaleString()} มากที่สุดเพื่อเจาะสนามพลัง</p>
+            </div>
+            <button onclick="l15_step3()" class="w-full py-4 bg-gold text-black font-black rounded-xl hover:brightness-110 shadow-lg">เริ่มเจาะระบบอ้างอิง 🚀</button>
+        </div>`;
+    }
+    function l15_step3() {
+        document.getElementById('l15-container').innerHTML = `
+        <div class="mb-4 border-b border-slate-700 pb-2"><span class="text-gold font-bold text-sm">⚡ ขั้นที่ 3: ชาร์จพลังงาน (หาผลหารก่อน)</span></div>
+        <div class="m-auto w-full">
+            <div class="text-center bg-space-900 p-6 rounded-xl border border-slate-600 mb-4 shadow-lg">
+                <p class="text-sm text-slate-300 mb-4">1. นำ ${l15.A.toLocaleString()} ÷ ${l15.B} เพื่อหาค่าเป้าหมายอ้างอิงก่อน</p>
+                <div class="flex justify-center items-center gap-2">
+                    <input type="number" id="l15_q" placeholder="พิมพ์ผลหาร..." class="w-48 py-3 text-center text-2xl text-black font-bold rounded-xl outline-none border-4 focus:border-gold">
+                    <button onclick="l15_checkQ()" class="py-3 px-6 bg-gold text-black font-black rounded-xl shadow-lg hover:scale-105 transition">ยืนยัน</button>
+                </div>
+                <p id="l15_msg1" class="text-laserPink text-sm mt-3 font-bold h-6"></p>
+            </div>
+            <div id="l15_part2" class="hidden text-center bg-space-800 p-6 rounded-xl border border-neonBlue shadow-[0_0_15px_rgba(5,217,232,0.2)]">
+                <p class="text-sm text-neonBlue mb-4 font-bold">✔️ ค่าอ้างอิงคือ ${l15.Q} เลือกจำนวนนับที่ ${l15.cond === '>' ? 'มากกว่า' : 'น้อยกว่า'} ${l15.Q} อยู่ 1 ค่า เพื่อเจาะเกราะ!</p>
+                <input type="number" id="l15_ans" placeholder="จำนวนนับเป้าหมาย..." class="w-full max-w-xs py-3 text-center text-2xl text-black font-bold rounded-xl outline-none border-4 focus:border-neonBlue">
+                <button onclick="l15_checkAns()" class="mt-4 w-full max-w-xs py-3 bg-neonBlue text-black font-black rounded-xl shadow-lg">ยิงเจาะเกราะ ⚡</button>
+                <p id="l15_msg2" class="text-laserPink text-sm mt-2 font-bold h-6"></p>
+            </div>
+        </div>`;
+    }
+    function l15_checkQ() {
+        if(parseInt(document.getElementById('l15_q').value) === l15.Q) { 
+            playTone(800,'sine',0.1); document.getElementById('l15_msg1').innerHTML=''; 
+            document.getElementById('l15_part2').classList.remove('hidden'); document.getElementById('l15_ans').focus(); 
+        } else { loseHeart(15); document.getElementById('l15_msg1').innerHTML='ผลหารยังไม่ถูก เสีย 1 หัวใจ'; }
+    }
+    function l15_checkAns() {
+        if(parseInt(document.getElementById('l15_ans').value) === l15.target) { playTone(800,'sine',0.1); l15_step4(); } 
+        else { loseHeart(15); document.getElementById('l15_msg2').innerHTML='เลือกจำนวนนับมากกว่า/น้อยกว่า ยังไม่ถูกต้อง เสีย 1 หัวใจ'; }
+    }
+    function l15_step4() {
+        document.getElementById('l15-container').innerHTML = `
+        <div class="mb-4 border-b border-slate-700 pb-2"><span class="text-gold font-bold text-sm">🚀 ขั้นที่ 4: ยืนยันพิกัดเจาะเกราะ!</span></div>
+        <div class="m-auto w-full">
+            <div class="w-full h-32 relative bg-space-900 rounded-xl overflow-hidden border border-slate-700 mb-6 flex items-center justify-center px-6 shadow-inner" id="shield-scene">
+                <div id="laser15" class="absolute top-0 bottom-0 left-0 w-0 bg-neonBlue/50 transition-all duration-700 z-10 mix-blend-screen"></div>
+                <div class="text-6xl z-0" id="shield-icon">🛡️</div>
+            </div>
+            <div class="bg-space-900 p-4 rounded-xl border border-emerald-400 text-center text-emerald-400 font-bold mb-6 shadow-[0_0_15px_rgba(52,211,153,0.2)] opacity-0 transition-opacity duration-500" id="v15-box">
+                <p>✔️ จำนวนนับที่เจาะเกราะได้คือ ${l15.target}</p>
+                <p class="text-sm mt-2 text-slate-300">ตรวจสอบ: ${l15.B} × ${l15.target} = ${(l15.B * l15.target).toLocaleString()}</p>
+            </div>
+            <button id="f15-btn" onclick="completeLevel(15)" class="w-full py-4 bg-gold text-black font-black text-lg rounded-xl shadow-lg opacity-0 pointer-events-none transition-opacity duration-500">ภารกิจสำเร็จ 🏆</button>
+        </div>`;
+
+        setTimeout(() => {
+            playTone(400, 'square', 0.5); document.getElementById('laser15').style.width = '100%';
+            setTimeout(() => {
+                document.getElementById('shield-icon').innerHTML = '💥'; document.getElementById('shield-icon').classList.add('scale-150', 'explode'); playTone(100, 'sawtooth', 0.6);
+                setTimeout(() => { document.getElementById('v15-box').classList.remove('opacity-0'); document.getElementById('f15-btn').classList.remove('opacity-0', 'pointer-events-none'); }, 500);
+            }, 600);
+        }, 500);
+    }
+
+    let l22 = {};
+    function l22_initGame() {
+        let isMult = Math.random() > 0.5; l22 = { type: isMult ? 'mult' : 'div' };
+        if(isMult) { l22.A = getRandom(120, 700); l22.B = getRandom(12, 75); l22.ans = l22.A * l22.B; l22.eq = `${l22.A.toLocaleString()} × ${l22.B.toLocaleString()} = □`; } 
+        else { l22.B = getRandom(12, 75); l22.ans = getRandom(120, 700); l22.A = l22.B * l22.ans; l22.eq = `${l22.A.toLocaleString()} ÷ ${l22.B.toLocaleString()} = □`; }
+        document.getElementById(`l22-container`).innerHTML = `
+            <div class="mb-4 border-b border-slate-700 pb-2 flex justify-between items-center"><span class="text-factoryAmber font-bold text-sm">📡 ขั้นที่ 1: วิเคราะห์ออเดอร์ (สแกน)</span></div>
+            <div class="m-auto w-full">
+                <div class="bg-space-900 p-5 rounded-xl border border-slate-700 text-center shadow-inner mb-6 relative overflow-hidden">
+                  <p class="text-slate-300 text-sm mb-2 relative z-10">🏭 ออเดอร์จากเครื่องจักร:</p>
+                  <div class="text-3xl md:text-4xl font-mono text-factoryAmber font-bold bg-black py-4 rounded-xl border-2 border-factoryAmber shadow-[0_0_15px_#f59e0b] relative z-10 inline-block px-6 animate-pulse">${l22.eq}</div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
+                  <button onclick="l22_check1('${l22.type==='mult'}')" class="p-6 bg-space-800 border-2 border-slate-600 rounded-xl text-white font-bold hover:border-neonBlue hover:bg-space-700 transition flex flex-col items-center"><span class="text-3xl mb-2">📦</span>แปลน: การเพิ่มขึ้นทีละเท่าๆ กัน (คูณ)</button>
+                  <button onclick="l22_check1('${l22.type==='div'}')" class="p-6 bg-space-800 border-2 border-slate-600 rounded-xl text-white font-bold hover:border-neonBlue hover:bg-space-700 transition flex flex-col items-center"><span class="text-3xl mb-2">🔪</span>แปลน: การแบ่งเป็นกลุ่มละเท่าๆ กัน (หาร)</button>
+                </div><div id="l22-msg1" class="text-center font-bold text-sm h-6 mt-2"></div>
+            </div>`;
+    }
+    function l22_check1(c) {
+        if(c === 'true') { playTone(800,'sine',0.1); document.getElementById('l22-msg1').innerHTML='<span class="text-emerald-400">✔️ เลือกแปลนถูกต้อง!</span>'; setTimeout(l22_step2, 1000); } 
+        else { loseHeart(22); document.getElementById('l22-msg1').innerHTML='<span class="text-laserPink">❌ แปลนผิด! เสีย 1 หัวใจ</span>'; }
+    }
+    function l22_step2() {
+        const hw = l22.type === 'mult' ? `ครั้งละเท่าๆ กัน, กล่องละ, ทั้งหมด, วันละ` : `แบ่งใส่, จัดเป็นกลุ่ม, แบ่งให้, ได้คนละเท่าๆ กัน`;
+        document.getElementById(`l22-container`).innerHTML = `
+            <div class="mb-4 border-b border-slate-700 pb-2"><span class="text-factoryAmber font-bold text-sm">🛠️ ขั้นที่ 2: แต่งโจทย์ปัญหา (วางแผน)</span></div>
+            <div class="m-auto w-full">
+                <div class="bg-space-800 p-4 rounded-xl border border-slate-600 mb-6 flex items-start gap-3">
+                    <div class="text-3xl shrink-0">💡</div>
+                    <div>
+                      <p class="text-sm text-gold font-bold mb-1">คลังคำศัพท์แนะนำ: ${hw}</p>
+                      <p class="text-xs text-emerald-400">บังคับ: ต้องพิมพ์ตัวเลข <strong class="text-white text-sm bg-black px-1 rounded">${l22.A}</strong> และ <strong class="text-white text-sm bg-black px-1 rounded">${l22.B}</strong> ลงในโจทย์ด้วย</p>
+                    </div>
+                </div>
+                <div class="space-y-4 mb-6">
+                    <input type="text" id="l22_g1" placeholder="สิ่งที่กำหนด 1 (เช่น โรงงานมีชิ้นส่วน...)" class="w-full bg-space-900 border-2 border-slate-600 focus:border-factoryAmber rounded-xl p-4 text-white outline-none transition">
+                    <input type="text" id="l22_g2" placeholder="สิ่งที่กำหนด 2 (เช่น บรรจุลงกล่อง กล่องละ...)" class="w-full bg-space-900 border-2 border-slate-600 focus:border-factoryAmber rounded-xl p-4 text-white outline-none transition">
+                    <input type="text" id="l22_q" placeholder="สิ่งที่ถาม (เช่น จะได้กี่กล่อง?)" class="w-full bg-space-900 border-2 border-dashed border-laserPink focus:border-solid focus:border-neonBlue rounded-xl p-4 text-white outline-none transition">
+                </div>
+                <button onclick="l22_check2()" class="w-full py-4 bg-factoryAmber text-black font-black text-lg rounded-xl shadow-[0_4px_0_#b47509] hover:translate-y-1 transition active:translate-y-2">สร้างโครงร่าง ⚙️</button>
+                <div id="l22-msg2" class="text-center font-bold text-sm mt-3 h-6"></div>
+            </div>`;
+    }
+    function l22_check2() {
+        l22.g1 = document.getElementById('l22_g1').value.trim(); l22.g2 = document.getElementById('l22_g2').value.trim(); l22.q = document.getElementById('l22_q').value.trim();
+        let c = (l22.g1+" "+l22.g2).replace(/,/g, '');
+        if(!l22.g1 || !l22.g2 || !l22.q) { loseHeart(22); document.getElementById('l22-msg2').innerHTML='<span class="text-laserPink animate-pulse">พิมพ์ข้อมูลให้ครบทุกช่อง!</span>'; return; }
+        if(!c.includes(l22.A) || !c.includes(l22.B)) { loseHeart(22); document.getElementById('l22-msg2').innerHTML=`<span class="text-laserPink animate-pulse">ลืมใส่เลข ${l22.A} หรือ ${l22.B}</span>`; return; }
+        playTone(800,'sine',0.1); document.getElementById('l22-msg2').innerHTML='<span class="text-emerald-400">✔️️ โครงสร้างสมบูรณ์!</span>'; setTimeout(l22_step3, 1000);
+    }
+    function l22_step3() {
+        document.getElementById(`l22-container`).innerHTML = `
+            <div class="mb-4 border-b border-slate-700 pb-2"><span class="text-factoryAmber font-bold text-sm">⚡ ขั้นที่ 3: ทดสอบระบบคำนวณ (ชาร์จพลังงาน)</span></div>
+            <div class="m-auto w-full text-center">
+                <div class="bg-space-900 p-6 rounded-xl border border-slate-700 mb-6 text-center">
+                  <div class="text-left bg-space-800 p-4 rounded-lg border border-slate-600 mb-6 text-sm md:text-base leading-relaxed">
+                    <p class="text-white">${l22.g1}</p><p class="text-white">${l22.g2}</p><p class="text-laserPink font-bold mt-2">${l22.q}</p>
+                  </div>
+                  <p class="text-slate-400 text-sm mb-2">คำนวณผลลัพธ์ของโจทย์ที่คุณสร้างขึ้น</p>
+                  <input type="number" id="l22_ans" placeholder="พิมพ์คำตอบ..." class="w-full max-w-xs bg-black border-4 border-factoryAmber focus:scale-105 transition rounded-xl py-4 text-center text-3xl font-bold text-factoryAmber outline-none">
+                </div>
+                <button onclick="l22_check3()" class="w-full max-w-sm py-4 bg-factoryAmber text-black font-black text-lg rounded-xl shadow-[0_4px_0_#b47509] mx-auto active:translate-y-1">ยืนยันผลทดสอบ ⚡</button>
+                <div id="l22-msg3" class="text-center font-bold text-sm mt-3 h-6"></div>
+            </div>`;
+    }
+    function l22_check3() {
+        if(parseInt(document.getElementById('l22_ans').value) === l22.ans) { playTone(800,'sine',0.1); l22_step4(); } 
+        else { loseHeart(22); document.getElementById('l22-msg3').innerHTML='<span class="text-laserPink animate-pulse">❌ คำตอบผิด! เครื่องจักรปฏิเสธโจทย์นี้</span>'; }
+    }
+    function l22_step4() {
+        let cs = l22.type==='mult' ? `${l22.ans} ÷ ${l22.B} = ${l22.A}` : `${l22.ans} × ${l22.B} = ${l22.A}`;
+        document.getElementById(`l22-container`).innerHTML = `
+            <div class="mb-4 border-b border-slate-700 pb-2"><span class="text-factoryAmber font-bold text-sm">🚀 ขั้นที่ 4: ตรวจสอบและส่งออกโจทย์</span></div>
+            <div class="m-auto w-full">
+                <div class="flex justify-center mb-6">
+                    <div class="bg-[#fdf6e3] text-slate-900 p-6 rounded-xl border-4 border-factoryAmber shadow-[0_10px_20px_rgba(0,0,0,0.5)] transform -rotate-2 max-w-sm w-full relative">
+                        <div class="absolute -top-4 right-4 text-4xl opacity-90 drop-shadow-md">📌</div>
+                        <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-[5rem] text-emerald-500/20 font-black border-4 border-emerald-500/20 rounded-full w-32 h-32 flex items-center justify-center -rotate-12 pointer-events-none">PASS</div>
+                        <h4 class="font-black border-b-2 border-slate-300 pb-2 mb-3 text-lg flex items-center gap-2"><span class="text-factoryAmber">🏭</span> PROBLEM CARD</h4>
+                        <p class="text-sm font-semibold mb-1">${l22.g1}</p>
+                        <p class="text-sm font-semibold mb-3">${l22.g2}</p>
+                        <p class="font-bold text-laserPink text-sm mb-4 bg-laserPink/10 p-2 rounded">${l22.q}</p>
+                        <div class="bg-white p-3 rounded-lg border-2 border-slate-300 text-xs shadow-inner">
+                            <div class="flex justify-between mb-1"><strong>คำตอบ:</strong> <span class="font-mono text-base">${l22.ans.toLocaleString()}</span></div>
+                            <div class="flex justify-between text-emerald-600"><strong>สมการเช็ค:</strong> <span class="font-mono">${cs} ✔️</span></div>
+                        </div>
+                    </div>
+                </div>
+                <button onclick="completeLevel(22)" class="w-full max-w-sm mx-auto block py-4 bg-factoryAmber text-black font-black text-lg rounded-xl shadow-lg hover:brightness-110">บันทึกผลงานลงคลัง 🏆</button>
+            </div>`;
+    }
+
+    const RunnerMathEngine = {
+        state: {
+            levelId: 17, currentSubstage: 1, maxSubstage: 4, currentProblem: null,
+            runnerActive: false, isPaused: false, polyaSteps: ['UNDERSTAND', 'PLAN', 'EXECUTE', 'REVIEW'], currentPolyaIndex: 0, 
+            playerLane: 1, entities: [], gameSpeed: 4, roadOffset: 0, runStartTime: 0 
+        },
+        animationFrameId: null, lastTime: 0, canvas: null, ctx: null, _hasKeyListener: false,
+
+        init: function(id) {
+            this.state.levelId = id; this.state.currentSubstage = 1; this.state.maxSubstage = 4;
+            const container = document.getElementById(`l${id}-container`);
+            
+            // The container is already completely cleared by startLevel(id). 
+            // Now we set the specific layout height required for the runner.
+            container.className = "bg-space-800 border border-slate-700 rounded-3xl p-2 sm:p-4 shadow-lg relative overflow-hidden flex flex-col h-[70vh] min-h-[500px]";
+
+            container.innerHTML = `
+                <div id="rm-game-wrapper" class="w-full h-full flex flex-col relative text-gray-800">
+                    <div class="flex justify-between items-center bg-white/10 p-2 rounded-xl mb-2 backdrop-blur-sm border border-white/20 shrink-0">
+                        <div class="text-neonBlue font-bold text-sm sm:text-base flex items-center gap-2">
+                            <span>ด่านย่อย: <span id="rm-substage-display" class="text-xl">1</span>/4</span>
+                        </div>
+                        <div class="text-gold font-bold text-sm sm:text-base flex items-center gap-2">
+                            <span id="rm-item-counter">📝 ขั้น 0/4</span>
+                        </div>
+                    </div>
+
+                    <div id="rm-canvas-container" class="relative flex-1 w-full bg-indigo-950 rounded-2xl border-4 border-purple-500 overflow-hidden shadow-inner transition-all duration-300 min-h-[250px]">
+                        <canvas id="rm-game-canvas" class="absolute top-0 left-0 w-full h-full block"></canvas>
+                        <div class="absolute top-4 left-1/2 transform -translate-x-1/2 text-center font-bold text-white text-xs sm:text-sm bg-black/60 py-1.5 px-4 rounded-full shadow-sm animate-pulse whitespace-nowrap pointer-events-none">
+                            🚀 วิ่งเก็บไอเทมเพื่อปลดล็อคโจทย์! หลบอุกกาบาต ☄️
+                        </div>
+                    </div>
+
+                    <div class="flex justify-between w-full mt-2 gap-2 shrink-0 sm:hidden">
+                        <button onmousedown="RunnerMathEngine.movePlayer(-1)" ontouchstart="RunnerMathEngine.movePlayer(-1); event.preventDefault();" class="flex-1 bg-space-700 active:bg-space-600 text-white text-3xl py-2 rounded-xl shadow-lg border-b-4 border-space-900 active:translate-y-1 active:border-b-0 font-bold flex items-center justify-center">◀</button>
+                        <button onmousedown="RunnerMathEngine.movePlayer(1)" ontouchstart="RunnerMathEngine.movePlayer(1); event.preventDefault();" class="flex-1 bg-space-700 active:bg-space-600 text-white text-3xl py-2 rounded-xl shadow-lg border-b-4 border-space-900 active:translate-y-1 active:border-b-0 font-bold flex items-center justify-center">▶</button>
+                    </div>
+
+                    <div id="rm-overlay-polya" class="hidden absolute inset-0 bg-slate-900/80 z-40 flex flex-col justify-center items-center p-2 sm:p-4 backdrop-blur-md animate-fade">
+                        <div class="w-full max-w-2xl flex flex-col bg-white rounded-2xl shadow-2xl border-4 border-indigo-400 overflow-hidden max-h-full">
+                            <div class="flex justify-between items-center bg-indigo-50 p-3 border-b-2 border-indigo-100 shrink-0">
+                                <h2 class="text-lg sm:text-xl font-extrabold text-indigo-700 flex items-center gap-2">✨ แก้โจทย์ปัญหา</h2>
+                                <div class="flex gap-2">
+                                    <button onclick="RunnerMathEngine.showProblemModal()" class="bg-indigo-100 text-indigo-700 px-3 py-1 rounded-lg font-bold text-xs sm:text-sm shadow-sm hover:bg-indigo-200 active:scale-95 transition-transform">📖 โจทย์</button>
+                                    <button onclick="RunnerMathEngine.showHint()" class="bg-amber-100 text-amber-700 px-3 py-1 rounded-lg font-bold text-xs sm:text-sm shadow-sm hover:bg-amber-200 active:scale-95 transition-transform">💡 คำใบ้</button>
+                                </div>
+                            </div>
+                            <div class="flex justify-between text-[10px] sm:text-xs font-bold bg-white p-2 border-b-2 border-gray-100 gap-1 shrink-0">
+                                <div id="rm-nav-step-0" class="flex-1 text-center py-1 rounded-md border-2 border-transparent transition-all">1. เข้าใจ</div>
+                                <div id="rm-nav-step-1" class="flex-1 text-center py-1 rounded-md border-2 border-transparent transition-all">2. วางแผน</div>
+                                <div id="rm-nav-step-2" class="flex-1 text-center py-1 rounded-md border-2 border-transparent transition-all">3. ดำเนินการ</div>
+                                <div id="rm-nav-step-3" class="flex-1 text-center py-1 rounded-md border-2 border-transparent transition-all">4. ตรวจสอบ</div>
+                            </div>
+                            <div id="rm-polya-content" class="flex-1 overflow-y-auto p-3 sm:p-4 bg-slate-50 relative min-h-[200px]"></div>
+                            <div class="p-3 bg-white border-t-2 border-gray-100 text-center shrink-0">
+                                <button onclick="RunnerMathEngine.checkPolyaAnswer()" class="btn-primary text-white font-bold text-lg py-2 px-6 rounded-xl shadow-md w-full hover:scale-[1.02] transition-transform">✨ ตรวจสอบคำตอบ ✨</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="rm-modal-overlay" class="hidden absolute inset-0 bg-slate-900/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm transition-opacity">
+                        <div class="bg-white p-6 rounded-2xl shadow-2xl text-center max-w-sm w-full animate-bounce-in border-4 border-white text-gray-800">
+                            <div id="rm-modal-icon" class="text-6xl mb-3 drop-shadow-md">ℹ️</div>
+                            <h2 id="rm-modal-title" class="text-2xl font-bold mb-3 text-gray-800">Title</h2>
+                            <div id="rm-modal-body" class="text-gray-600 mb-6 text-sm font-medium bg-gray-50 p-3 rounded-xl border border-gray-100">Body</div>
+                            <button id="rm-modal-btn" onclick="RunnerMathEngine.closeModal()" class="btn-primary text-white font-bold text-lg py-3 rounded-xl w-full shadow-md">OK</button>
+                        </div>
+                    </div>
+
+                    <div id="rm-problem-modal" class="hidden absolute inset-0 bg-slate-900/80 z-[60] flex items-center justify-center p-4 backdrop-blur-sm text-gray-800" onclick="if(event.target===this) this.classList.add('hidden')">
+                        <div class="bg-amber-50 p-6 rounded-2xl shadow-2xl max-w-md w-full border-4 border-amber-300 animate-bounce-in relative">
+                            <button onclick="document.getElementById('rm-problem-modal').classList.add('hidden')" class="absolute -top-3 -right-3 w-8 h-8 bg-red-500 text-white rounded-full font-bold shadow-lg hover:bg-red-600 border-2 border-white flex items-center justify-center">✕</button>
+                            <h3 class="font-bold text-amber-900 text-lg mb-3 border-b-2 border-amber-200 pb-2">📜 โจทย์ปัญหา</h3>
+                            <p id="rm-problem-text" class="text-base font-bold text-gray-800 leading-relaxed text-center"></p>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // Thanks to the aggressive cleanup in startLevel(), 
+            // there is ONLY ONE element with this ID in the entire DOM.
+            this.canvas = document.getElementById('rm-game-canvas');
+            this.ctx = this.canvas.getContext('2d');
+            
+            if (!this._hasKeyListener) {
+                window.addEventListener('keydown', (e) => {
+                    if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+                    if (RunnerMathEngine.state.runnerActive && !RunnerMathEngine.state.isPaused) {
+                        if (e.key === 'ArrowLeft') RunnerMathEngine.movePlayer(-1);
+                        if (e.key === 'ArrowRight') RunnerMathEngine.movePlayer(1);
+                    }
+                });
+                this._hasKeyListener = true;
+            }
+
+            setTimeout(() => this.startSubstage(), 100); 
+        },
+
+        generateProblem: function() {
+            let lvl = this.state.levelId;
+            let sub = this.state.currentSubstage;
+            let type = 'multiplication';
+
+            if (lvl === 19 || lvl === 20) type = 'division';
+            else if (lvl === 21) type = Math.random() > 0.5 ? 'multiplication' : 'division';
+
+            const items = ['หนังสือ', 'ดินสอ', 'ลูกบอล', 'ขนม', 'สมุด', 'ตุ๊กตา', 'แอปเปิล'];
+            const item = items[Math.floor(Math.random() * items.length)];
+
+            if (type === 'multiplication') {
+                let num1, num2;
+                if (lvl === 17) {
+                    num1 = (sub === 1 || sub === 3) ? getRandom(10000, 99999) : getRandom(1000, 9999);
+                    num2 = (sub === 1 || sub === 3) ? getRandom(2, 9) : getRandom(10, 99);
+                } else if (lvl === 18) {
+                    num1 = (sub === 1 || sub === 3) ? getRandom(100, 999) : getRandom(1000, 9999);
+                    num2 = getRandom(100, 999);
+                } else { // lvl 21 fallback
+                    num1 = getRandom(100, 999); num2 = getRandom(10, 99);
+                }
+                const answer = num1 * num2;
+                return {
+                    type: 'multiplication',
+                    fact1: `สถานีส่ง${item}มา ${num1.toLocaleString()} กล่อง`, fact2: `แต่ละกล่องบรรจุ${item} ${num2.toLocaleString()} ชิ้น`, question: `สถานีส่ง${item}มาทั้งหมดกี่ชิ้น`,
+                    fullText: `สถานีอวกาศส่ง${item}มาให้กองทัพ ${num1.toLocaleString()} กล่อง แต่ละกล่องบรรจุ${item} ${num2.toLocaleString()} ชิ้น สถานีอวกาศส่ง${item}มาให้ทั้งหมดกี่ชิ้น`,
+                    label1: `สถานีส่ง${item}มาจำนวน`, unit1: `กล่อง`, label2: `แต่ละกล่องบรรจุ${item}`, unit2: `ชิ้น`, label3: `สถานีส่ง${item}มาทั้งหมด`, unit3: `ชิ้น`,
+                    num1: num1, num2: num2, op: '×', answer: answer, remainder: 0
+                };
+            } else {
+                let divisor, remainder, quotient, dividend;
+                if (lvl === 19) {
+                    if (sub === 1) { divisor = getRandom(2, 9); remainder = 0; }
+                    else if (sub === 2) { divisor = getRandom(2, 9); remainder = getRandom(1, divisor - 1); }
+                    else if (sub === 3) { divisor = getRandom(10, 99); remainder = 0; }
+                    else { divisor = getRandom(10, 99); remainder = getRandom(1, divisor - 1); }
+                    let maxQ = Math.floor(99999 / divisor); quotient = getRandom(100, Math.min(maxQ, 999));
+                    dividend = (quotient * divisor) + remainder;
+                } else if (lvl === 20) {
+                    divisor = getRandom(100, 999);
+                    remainder = (sub === 2 || sub === 4) ? getRandom(1, divisor - 1) : 0;
+                    quotient = getRandom(10, 999);
+                    dividend = (quotient * divisor) + remainder;
+                } else { // lvl 21 fallback
+                    divisor = getRandom(10, 99); quotient = getRandom(100, 999);
+                    const hasRem = Math.random() > 0.4; remainder = hasRem ? getRandom(1, divisor - 1) : 0;
+                    dividend = (quotient * divisor) + remainder;
+                }
+                const hasRemainder = remainder > 0;
+                return {
+                    type: 'division',
+                    fact1: `สถานีผลิต${item}ได้ ${dividend.toLocaleString()} ชิ้น`, fact2: `นำมาจัดใส่กล่อง กล่องละ ${divisor.toLocaleString()} ชิ้น`,
+                    question: hasRemainder ? `จะจัด${item}ได้กี่กล่อง และเหลือเศษกี่ชิ้น` : `จะจัด${item}ได้กี่กล่อง`,
+                    fullText: `สถานีอวกาศผลิต${item}ได้ ${dividend.toLocaleString()} ชิ้น นำมาจัดใส่กล่อง กล่องละ ${divisor.toLocaleString()} ชิ้น ${hasRemainder ? `จะจัด${item}ได้กี่กล่อง และเหลือเศษกี่ชิ้น` : `จะจัด${item}ได้กี่กล่อง`}`,
+                    label1: `สถานีผลิต${item}ได้`, unit1: `ชิ้น`, label2: `จัดใส่กล่อง กล่องละ`, unit2: `ชิ้น`, label3: `จะจัด${item}ได้`, unit3: `กล่อง`, labelRem: `และเหลือเศษ`, unitRem: `ชิ้น`,
+                    num1: dividend, num2: divisor, op: '÷', answer: quotient, remainder: remainder
+                };
+            }
+        },
+
+        updateUI: function() {
+            document.getElementById('rm-item-counter').innerText = `📝 ขั้น ${this.state.currentPolyaIndex}/4`;
+            document.getElementById('rm-substage-display').innerText = this.state.currentSubstage;
+        },
+
+        resizeCanvas: function() {
+            if (!this.canvas) return;
+            const container = document.getElementById('rm-canvas-container');
+            if (!container) return;
+            const w = container.clientWidth; const h = container.clientHeight;
+            if (w > 0 && h > 0 && (this.canvas.width !== w || this.canvas.height !== h)) {
+                this.canvas.width = w; this.canvas.height = h;
+            }
+        },
+
+        startSubstage: function() {
+            this.state.currentProblem = this.generateProblem();
+            this.state.currentPolyaIndex = 0;
+            this.updateUI();
+
+            this.state.runnerActive = true; this.state.isPaused = false;
+            this.state.playerLane = 1; this.state.entities = [];
+            
+            // Balanced Speed
+            this.state.gameSpeed = 4 + (this.state.currentSubstage * 0.5) + ((this.state.levelId - 17) * 0.5); 
+            
+            this.state.roadOffset = 0; this.state.runStartTime = performance.now(); 
+            
+            document.getElementById('rm-canvas-container').classList.remove('blur-sm');
+            this.resizeCanvas();
+            
+            this.lastTime = performance.now();
+            cancelAnimationFrame(this.animationFrameId);
+            this.animationFrameId = requestAnimationFrame((ts) => this.runnerLoop(ts));
+        },
+
+        movePlayer: function(dir) {
+            if (!this.state.runnerActive || this.state.isPaused) return;
+            this.state.playerLane += dir;
+            if (this.state.playerLane < 0) this.state.playerLane = 0;
+            if (this.state.playerLane > 2) this.state.playerLane = 2;
+        },
+
+        modalCallback: null,
+        showModal: function(title, bodyHTML, btnText, callback, isError = false) {
+            document.getElementById('rm-modal-title').innerHTML = title;
+            document.getElementById('rm-modal-title').className = `text-2xl font-bold mb-3 ${isError ? 'text-red-600' : 'text-blue-600'}`;
+            document.getElementById('rm-modal-body').innerHTML = bodyHTML;
+            const btn = document.getElementById('rm-modal-btn');
+            btn.innerText = btnText;
+            btn.className = `text-white font-bold text-lg py-3 rounded-xl w-full shadow-lg transition-transform hover:scale-105 active:scale-95 ${isError ? 'bg-red-500 border-b-4 border-red-700' : 'btn-primary'}`;
+            document.getElementById('rm-modal-icon').innerText = isError ? '💥' : '🎉';
+            this.modalCallback = callback;
+            document.getElementById('rm-modal-overlay').classList.remove('hidden');
+        },
+
+        closeModal: function() {
+            document.getElementById('rm-modal-overlay').classList.add('hidden');
+            if (this.modalCallback) this.modalCallback();
+        },
+
+        runnerLoseLife: function(reason) {
+            const isDead = loseHeart(this.state.levelId);
+            const wrap = document.getElementById('rm-game-wrapper');
+            if(wrap) { wrap.classList.add('shake'); setTimeout(() => wrap.classList.remove('shake'), 400); }
+
+            if (isDead) {
+                this.state.runnerActive = false; this.state.isPaused = true;
+                cancelAnimationFrame(this.animationFrameId);
+                const wasInPolya = !document.getElementById('rm-overlay-polya').classList.contains('hidden');
+                
+                this.showModal('💔 พลังงานยานหมด!', `
+                    <p class="text-lg font-bold text-gray-800">ฮึดสู้ขึ้นมาใหม่! ซ่อมแซมยานแล้วลุยต่อ</p>
+                    <div class="mt-4 bg-red-50 p-3 rounded-lg border border-red-100 text-base text-gray-600">
+                        เริ่มทำต่อจาก<span class="font-bold text-red-600">${wasInPolya ? 'ขั้นตอนที่ค้างอยู่' : 'จุดเดิม'}</span> <br>โดยใช้โจทย์เดิมได้เลย!
+                    </div>
+                `, 'ฮึดสู้ ลุยต่อ 🔄', () => {
+                    levelHearts = 3; updateHeartDisplay(this.state.levelId);
+                    if (wasInPolya) { this.state.isPaused = true; } else { this.resumeRunner(); }
+                }, true);
+                return true; 
+            }
+            return false;
+        },
+
+        runnerLoop: function(timestamp) {
+            if (!this.state.runnerActive || this.state.isPaused) return; 
+            this.animationFrameId = requestAnimationFrame((ts) => this.runnerLoop(ts));
+            
+            const dt = timestamp - this.lastTime;
+            if (dt < 16) return; 
+            this.lastTime = timestamp;
+
+            this.resizeCanvas();
+            if (this.canvas.width === 0 || this.canvas.height === 0) return;
+
+            this.state.roadOffset += this.state.gameSpeed;
+            if (this.state.roadOffset >= 10000) this.state.roadOffset = 0; 
+            
+            const spaceColor1 = '#0f172a'; const spaceColor2 = '#1e293b'; const stripeHeight = 50;
+            const offset = this.state.roadOffset % (stripeHeight * 2);
+            for (let y = -stripeHeight * 2 + offset; y < this.canvas.height; y += stripeHeight) {
+                this.ctx.fillStyle = Math.floor(y / stripeHeight) % 2 === 0 ? spaceColor1 : spaceColor2;
+                this.ctx.fillRect(0, y, this.canvas.width, stripeHeight);
+            }
+            
+            const roadWidth = this.canvas.width * 0.8; const roadX = (this.canvas.width - roadWidth) / 2;
+            this.ctx.fillStyle = '#c084fc'; this.ctx.fillRect(roadX - 10, 0, roadWidth + 20, this.canvas.height);
+            this.ctx.fillStyle = '#312e81'; this.ctx.fillRect(roadX, 0, roadWidth, this.canvas.height);
+            
+            this.ctx.strokeStyle = '#38bdf8'; this.ctx.lineWidth = 8; this.ctx.setLineDash([40, 40]);
+            const laneWidth = roadWidth / 3;
+            for(let i=1; i<3; i++) {
+                this.ctx.beginPath(); this.ctx.moveTo(roadX + (laneWidth * i), -80 + (this.state.roadOffset % 80));
+                this.ctx.lineTo(roadX + (laneWidth * i), this.canvas.height + 80); this.ctx.stroke();
+            }
+            this.ctx.setLineDash([]);
+
+            const playerX = roadX + (this.state.playerLane * laneWidth) + (laneWidth / 2);
+            const playerY = this.canvas.height - 90; const playerRadius = 35;
+
+            this.ctx.fillStyle = 'rgba(0,0,0,0.5)';
+            this.ctx.beginPath(); this.ctx.ellipse(playerX, playerY + 30, 30, 12, 0, 0, Math.PI*2); this.ctx.fill();
+            this.ctx.font = '65px Arial'; this.ctx.textAlign = 'center'; this.ctx.textBaseline = 'middle';
+            this.ctx.shadowColor = 'rgba(255, 255, 255, 0.8)'; this.ctx.shadowBlur = 20;
+            this.ctx.fillText('🚀', playerX, playerY); this.ctx.shadowBlur = 0;
+
+            const spawnChance = 0.04 + (this.state.currentSubstage * 0.015);
+            if (Math.random() < spawnChance) { 
+                const lane = Math.floor(Math.random() * 3);
+                if (!this.state.entities.some(e => e.lane === lane && e.y < 300)) { 
+                    const timeRunning = performance.now() - this.state.runStartTime;
+                    let isObstacle = timeRunning > 2000 ? (Math.random() < 0.85) : true; 
+                    
+                    if (isObstacle) {
+                        const recentObstacles = this.state.entities.filter(e => e.isObstacle && e.y < 300);
+                        const occupiedLanes = new Set(recentObstacles.map(e => e.lane));
+                        if (occupiedLanes.size < 2 || occupiedLanes.has(lane)) {
+                            const obs = ['☄️', '👽', '🛰️'];
+                            this.state.entities.push({ x: 0, y: -50, lane: lane, symbol: obs[Math.floor(Math.random()*obs.length)], isObstacle: true, collected: false });
+                        }
+                    } else {
+                        const items = ['🌟', '🎁']; 
+                        this.state.entities.push({ x: 0, y: -50, lane: lane, symbol: items[Math.floor(Math.random()*items.length)], isObstacle: false, collected: false });
+                    }
+                }
+            }
+            
+            let triggerPolya = false;
+            for (let i = this.state.entities.length - 1; i >= 0; i--) {
+                let ent = this.state.entities[i];
+                ent.y += this.state.gameSpeed;
+                const entX = roadX + (ent.lane * laneWidth) + (laneWidth / 2);
+                
+                if (!ent.collected) {
+                    this.ctx.fillStyle = 'rgba(0,0,0,0.5)';
+                    this.ctx.beginPath(); this.ctx.ellipse(entX, ent.y + 25, 25, 10, 0, 0, Math.PI*2); this.ctx.fill();
+                    this.ctx.font = '55px Arial';
+                    this.ctx.shadowColor = ent.isObstacle ? 'rgba(239, 68, 68, 0.9)' : 'rgba(250, 204, 21, 0.9)';
+                    this.ctx.shadowBlur = 15;
+                    this.ctx.fillText(ent.symbol, entX, ent.y); this.ctx.shadowBlur = 0;
+                    
+                    const dist = Math.hypot(entX - playerX, ent.y - playerY);
+                    if (dist < playerRadius + 20) {
+                        ent.collected = true;
+                        if (ent.isObstacle) {
+                            if(this.runnerLoseLife('ชนอุปสรรคอวกาศ')) return;
+                        } else {
+                            playTone(800, 'sine', 0.1); triggerPolya = true; this.state.entities.splice(i, 1); break; 
+                        }
+                    }
+                }
+                if (ent.y > this.canvas.height + 50) this.state.entities.splice(i, 1);
+            }
+
+            if (triggerPolya) this.initiatePolyaEncounter();
+        },
+
+        initiatePolyaEncounter: function() {
+            this.state.isPaused = true;
+            document.getElementById('rm-canvas-container').classList.add('blur-sm'); 
+            this.setPolyaPhase(this.state.polyaSteps[this.state.currentPolyaIndex]);
+            document.getElementById('rm-overlay-polya').classList.remove('hidden');
+        },
+
+        resumeRunner: function() {
+            document.getElementById('rm-overlay-polya').classList.add('hidden');
+            document.getElementById('rm-canvas-container').classList.remove('blur-sm');
+            this.state.runnerActive = true; this.state.isPaused = false;
+            this.lastTime = performance.now(); this.state.runStartTime = performance.now(); 
+            cancelAnimationFrame(this.animationFrameId); 
+            this.animationFrameId = requestAnimationFrame((ts) => this.runnerLoop(ts));
+        },
+
+        showProblemModal: function() {
+            document.getElementById('rm-problem-text').innerText = this.state.currentProblem.fullText;
+            document.getElementById('rm-problem-modal').classList.remove('hidden');
+        },
+
+        showHint: function() {
+            const phase = this.state.polyaSteps[this.state.currentPolyaIndex]; const p = this.state.currentProblem; let h = "";
+            if(phase==='UNDERSTAND') h = "หาว่าโจทย์กำหนดตัวเลขอะไรมาให้ (บอก) และประโยคสุดท้ายคือสิ่งที่โจทย์ต้องการรู้ (ถาม)";
+            else if(phase==='PLAN') h = p.type === 'multiplication' ? "การเพิ่มขึ้นทีละเท่าๆ กันหลายกลุ่ม = การคูณ (×)" : "การแบ่งออกเป็นกลุ่ม กลุ่มละเท่าๆ กัน = การหาร (÷)";
+            else if(phase==='EXECUTE') h = p.type === 'multiplication' ? "ค่อยๆ คิดเลขนะ นำตัวเลขตามประโยคสัญลักษณ์มาคำนวณ ระวังเรื่องทดเลข" : "ค่อยๆ คิดเลขนะ นำตัวเลขมาตั้งหารยาวดูให้ดี ระวังการหาเศษ";
+            else h = p.type === 'multiplication' ? "ใช้การหารตรวจคำตอบ (ผลลัพธ์ ÷ ตัวคูณ = ตัวตั้ง)" : "ใช้การคูณตรวจคำตอบ ((ผลหาร × ตัวหาร) + เศษ = ตัวตั้ง)";
+            this.showModal('💡 คำใบ้', h, 'เข้าใจแล้ว', null);
+        },
+
+        setPolyaPhase: function(phase) {
+            for(let i=0; i<4; i++) {
+                const el = document.getElementById(`rm-nav-step-${i}`);
+                el.className = 'flex-1 text-center py-1 rounded-md border-2 transition-all duration-300';
+                if (i < this.state.currentPolyaIndex) el.classList.add('polya-step-done');
+                else if (i === this.state.currentPolyaIndex) el.classList.add('polya-step-active', 'scale-105');
+                else el.classList.add('border-gray-200', 'text-gray-400', 'bg-gray-50');
+            }
+            
+            const container = document.getElementById('rm-polya-content');
+            const p = this.state.currentProblem; let html = '';
+            
+            if (phase === 'UNDERSTAND') {
+                const allParts = [p.fact1, p.fact2, p.question].sort(() => Math.random() - 0.5);
+                let qHTML = `<div class="bg-indigo-50 p-3 rounded-xl border-2 border-indigo-100 mb-3 shadow-sm"><p class="font-bold text-indigo-900 mb-2">1. สิ่งที่โจทย์ถามคืออะไร? <span class="text-xs font-normal text-indigo-600">(เลือก 1 ข้อ)</span></p><div class="space-y-1.5">`;
+                allParts.forEach(opt => { qHTML += `<label class="flex items-start sm:items-center gap-2 p-2 rounded-lg bg-white cursor-pointer border hover:border-indigo-300 shadow-sm"><input type="radio" name="u_question" value="${opt === p.question ? 'correct' : 'wrong'}" class="w-5 h-5 mt-0.5 sm:mt-0 text-indigo-600 shrink-0"><span class="text-gray-700 text-sm font-medium">${opt}</span></label>`; });
+                qHTML += `</div></div>`;
+
+                let fHTML = `<div class="bg-emerald-50 p-3 rounded-xl border-2 border-emerald-100 shadow-sm"><p class="font-bold text-emerald-900 mb-2">2. สิ่งที่โจทย์บอกคืออะไร? <span class="text-xs font-normal text-emerald-600">(เลือก 2 ข้อ)</span></p><div class="space-y-1.5">`;
+                [...allParts].sort(() => Math.random() - 0.5).forEach(opt => { fHTML += `<label class="flex items-start sm:items-center gap-2 p-2 rounded-lg bg-white cursor-pointer border hover:border-emerald-300 shadow-sm"><input type="checkbox" name="u_facts" value="${(opt===p.fact1||opt===p.fact2) ? 'correct' : 'wrong'}" class="w-5 h-5 mt-0.5 sm:mt-0 text-emerald-600 rounded shrink-0"><span class="text-gray-700 text-sm font-medium">${opt}</span></label>`; });
+                fHTML += `</div></div>`;
+                html = `<div class="bg-amber-100 border-l-4 border-amber-400 p-3 rounded-r-lg mb-3 shadow-sm"><p class="text-sm font-bold text-amber-900">${p.fullText}</p></div>${qHTML}${fHTML}`;
+            }
+            else if (phase === 'PLAN') {
+                html = `<div class="bg-amber-100 border-l-4 border-amber-400 p-3 rounded-lg mb-4 w-full shadow-sm"><p class="text-sm font-bold text-amber-900">${p.fullText}</p></div>
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-blue-100 text-center flex flex-col items-center">
+                    <div class="bg-blue-600 text-white px-4 py-1 rounded-full font-bold text-sm shadow-md mb-6">สร้างประโยคสัญลักษณ์</div>
+                    <div class="flex flex-wrap items-center justify-center gap-2 bg-slate-50 p-4 rounded-2xl border border-slate-200 w-full shadow-inner">
+                        <input type="number" id="rm-plan-num1" class="math-input w-24 sm:w-28 text-lg" placeholder="ตัวเลข">
+                        <select id="rm-plan-op" class="math-input !w-16 text-lg bg-white cursor-pointer text-center border-indigo-300 text-indigo-700"><option value="">?</option><option value="+">➕</option><option value="-">➖</option><option value="×">✖️</option><option value="÷">➗</option></select>
+                        <input type="number" id="rm-plan-num2" class="math-input w-24 sm:w-28 text-lg" placeholder="ตัวเลข">
+                        <span class="text-2xl font-bold text-gray-400">=</span>
+                        <div class="w-12 h-10 border-2 border-dashed border-gray-300 bg-white rounded-lg flex items-center justify-center text-xl text-gray-300 shadow-sm">?</div>
+                    </div>
+                </div>`;
+            }
+            else if (phase === 'EXECUTE') {
+                html = `<div class="bg-amber-100 border-l-4 border-amber-400 p-3 rounded-lg mb-3 shadow-sm"><p class="text-sm font-bold text-amber-900">${p.fullText}</p></div>
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-blue-100 flex-1 relative mt-3">
+                    <div class="absolute -top-3 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-4 py-1 rounded-full font-bold text-sm shadow-md">แสดงวิธีทำ</div>
+                    <div class="flex flex-col gap-3 w-full text-sm font-medium mt-3">`;
+                
+                if (p.type === 'multiplication') {
+                    html += `<div class="flex justify-between items-center gap-2 bg-gray-50 p-2 rounded"><span class="text-gray-700 flex-1 truncate">${p.label1}</span><input type="number" id="rm-exe-n1" class="math-input w-28 sm:w-32 h-8 bg-white"><span class="text-gray-500 w-12 text-left">${p.unit1}</span></div>
+                        <div class="flex justify-between items-center gap-2 bg-gray-50 p-2 rounded"><span class="text-gray-700 flex-1 truncate">${p.label2}</span><input type="number" id="rm-exe-n2" class="math-input w-28 sm:w-32 h-8 bg-white"><span class="text-gray-500 w-12 text-left">${p.unit2}</span></div>
+                        <div class="flex items-center justify-center"><span class="bg-gray-200 h-0.5 w-full"></span><span class="mx-2 text-lg">✖️</span><span class="bg-gray-200 h-0.5 w-full"></span></div>
+                        <div class="flex justify-between items-center gap-2 bg-blue-50 p-2 rounded-lg border border-blue-200"><span class="font-bold text-blue-800 flex-1 truncate">${p.label3}</span><input type="number" id="rm-exe-ans" class="math-input w-32 sm:w-40 h-9 border-blue-500 bg-white text-blue-700"><span class="text-gray-600 w-12 text-left">${p.unit3}</span></div>`;
+                } else {
+                    html += `<div class="flex justify-between items-center gap-2 bg-gray-50 p-1.5 rounded"><span class="text-gray-700 flex-1 truncate">${p.label1}</span><input type="number" id="rm-exe-n1" class="math-input w-24 h-8 text-base shrink-0 bg-white"><span class="text-gray-500 w-10 text-left shrink-0">${p.unit1}</span></div>
+                        <div class="flex justify-between items-center gap-2 bg-gray-50 p-1.5 rounded"><span class="text-gray-700 flex-1 truncate">${p.label2}</span><input type="number" id="rm-exe-n2" class="math-input w-20 h-8 text-base shrink-0 bg-white"><span class="text-gray-500 w-10 text-left shrink-0">${p.unit2}</span></div>
+                        <div class="flex items-center justify-center my-0.5"><span class="bg-gray-200 h-0.5 w-full"></span><span class="mx-2">➗</span><span class="bg-gray-200 h-0.5 w-full"></span></div>
+                        <div class="flex justify-between items-center gap-2 bg-emerald-50 p-2 rounded-lg border border-emerald-200 mb-1"><span class="font-bold text-emerald-800 flex-1 truncate">${p.label3}</span><input type="number" id="rm-exe-ans" class="math-input w-24 h-9 text-base border-emerald-500 bg-white text-emerald-700"><span class="text-gray-600 w-10 text-left shrink-0">${p.unit3}</span></div>
+                        <div class="flex justify-between items-center gap-2 bg-amber-50 p-2 rounded-lg border border-amber-200"><span class="font-bold text-amber-700 flex-1 truncate">${p.labelRem}</span><input type="number" id="rm-exe-rem" class="math-input w-20 h-9 text-base border-amber-400 bg-white text-amber-700" placeholder="0"><span class="text-gray-600 w-10 text-left shrink-0">${p.unitRem}</span></div>`;
+                }
+                html += `</div></div>`;
+            }
+            else if (phase === 'REVIEW') {
+                html = `<div class="bg-amber-100 p-2 rounded-lg mb-3 shadow-sm"><p class="text-xs sm:text-sm font-bold text-amber-900 text-center">${p.fullText}</p></div>
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-blue-100 flex flex-col items-center relative mt-3">
+                    <div class="absolute -top-3 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-4 py-1 rounded-full font-bold text-sm shadow-md">ตรวจสอบคำตอบ</div>`;
+                
+                if (p.type === 'multiplication') {
+                    html += `<div class="flex items-center justify-center gap-2 flex-wrap bg-indigo-50 p-4 rounded-xl border border-indigo-200 shadow-inner w-full mt-2">
+                        <div class="text-center"><p class="text-[10px] text-indigo-500 mb-1 font-bold">ผลคูณ</p><input type="number" id="rm-rev-p" class="math-input border-indigo-400 w-28 sm:w-32" placeholder="?"></div><span class="text-2xl font-bold text-indigo-300 mt-3">÷</span>
+                        <div class="text-center"><p class="text-[10px] text-indigo-500 mb-1 font-bold">ตัวคูณ/ตั้ง</p><input type="number" id="rm-rev-m" class="math-input w-24 sm:w-28" placeholder="?"></div><span class="text-2xl font-bold text-indigo-300 mt-3">=</span>
+                        <div class="text-center"><p class="text-[10px] text-indigo-500 mb-1 font-bold">อีกจำนวน</p><input type="number" id="rm-rev-mc" class="math-input w-24 sm:w-28 border-green-400 bg-green-50" placeholder="?"></div></div>`;
+                } else {
+                    html += `<div class="flex items-center justify-center gap-1 sm:gap-2 flex-wrap bg-emerald-50 p-3 rounded-xl border border-emerald-200 shadow-inner w-full mt-2">
+                        <span class="text-lg font-bold text-emerald-400 mt-4">(</span><div class="text-center"><p class="text-[10px] text-emerald-600 mb-1 font-bold">ผลหาร</p><input type="number" id="rm-rev-q" class="math-input border-emerald-500 w-20 sm:w-24" placeholder="?"></div><span class="text-lg font-bold text-emerald-400 mt-4">×</span>
+                        <div class="text-center"><p class="text-[10px] text-emerald-600 mb-1 font-bold">ตัวหาร</p><input type="number" id="rm-rev-d" class="math-input w-16 sm:w-20" placeholder="?"></div><span class="text-lg font-bold text-emerald-400 mt-4">)</span><span class="text-xl font-bold text-emerald-400 mt-4">+</span>
+                        <div class="text-center"><p class="text-[10px] text-amber-600 mb-1 font-bold">เศษ</p><input type="number" id="rm-rev-r" class="math-input border-amber-400 w-16 sm:w-20" placeholder="0"></div><span class="text-xl font-bold text-gray-400 mt-4">=</span>
+                        <div class="text-center"><p class="text-[10px] text-blue-600 mb-1 font-bold">ตัวตั้ง</p><input type="number" id="rm-rev-div" class="math-input border-blue-400 bg-blue-50 w-24 sm:w-28" placeholder="?"></div></div>`;
+                }
+                html += `</div>`;
+            }
+            container.innerHTML = `<div class="animate-fade-in w-full h-full flex flex-col gap-3">${html}</div>`;
+        },
+
+        checkPolyaAnswer: function() {
+            const phase = this.state.polyaSteps[this.state.currentPolyaIndex];
+            const p = this.state.currentProblem; let isCorrect = false; let errorMsg = "ข้อมูลไม่ถูกต้อง ลองพิจารณาใหม่อีกครั้งนะ";
+
+            if (phase === 'UNDERSTAND') {
+                const qRadio = document.querySelector('input[name="u_question"]:checked');
+                const fChecks = document.querySelectorAll('input[name="u_facts"]:checked');
+                if (!qRadio || fChecks.length !== 2) errorMsg = "เลือกสิ่งที่โจทย์ถาม 1 ข้อ และบอก 2 ข้อให้ครบ";
+                else {
+                    let fCorrect = Array.from(fChecks).filter(cb => cb.value === 'correct').length;
+                    if (qRadio.value === 'correct' && fCorrect === 2) isCorrect = true;
+                    else errorMsg = "วิเคราะห์ยังไม่ถูกจ้า (ถาม=ประโยคคำถาม, บอก=ตัวเลขข้อมูล)";
+                }
+            } 
+            else if (phase === 'PLAN') {
+                const n1 = parseInt(document.getElementById('rm-plan-num1').value);
+                const op = document.getElementById('rm-plan-op').value;
+                const n2 = parseInt(document.getElementById('rm-plan-num2').value);
+                if (isNaN(n1) || isNaN(n2) || !op) errorMsg = "กรอกตัวเลขและเลือกเครื่องหมายให้ครบถ้วน";
+                else if (op !== p.op) errorMsg = "เครื่องหมายผิด! ลองคิดดูว่าเพิ่มทีละเท่าๆ กัน หรือแบ่งเท่าๆ กัน";
+                else {
+                    if (op === '×') {
+                        if ((n1 === p.num1 && n2 === p.num2) || (n1 === p.num2 && n2 === p.num1)) isCorrect = true;
+                        else errorMsg = "ตัวเลขไม่ตรงกับโจทย์";
+                    } else {
+                        if (n1 === p.num1 && n2 === p.num2) isCorrect = true;
+                        else if (n1 === p.num2 && n2 === p.num1) errorMsg = "การหาร ตัวตั้งต้องเป็นของทั้งหมด (เลขมาก) เสมอจ้า";
+                        else errorMsg = "ตัวเลขไม่ตรงกับโจทย์จ้า";
+                    }
+                }
+            }
+            else if (phase === 'EXECUTE') {
+                const n1 = parseInt(document.getElementById('rm-exe-n1').value);
+                const n2 = parseInt(document.getElementById('rm-exe-n2').value);
+                const ans = parseInt(document.getElementById('rm-exe-ans').value);
+                if (isNaN(n1) || isNaN(n2) || isNaN(ans)) errorMsg = "กรอกตัวเลขให้ครบทุกช่องจ้า";
+                else {
+                    if (p.type === 'multiplication') {
+                        if (ans === p.answer && ((n1===p.num1 && n2===p.num2) || (n1===p.num2 && n2===p.num1))) isCorrect = true;
+                        else if (ans !== (n1*n2)) errorMsg = "คูณเลขผิดจ้า ลองทดใหม่ดีๆ";
+                        else errorMsg = "ตัวตั้งหรือตัวคูณไม่ตรงกับที่วางแผนไว้";
+                    } else {
+                        const remInput = document.getElementById('rm-exe-rem').value;
+                        const rem = remInput === "" ? 0 : parseInt(remInput);
+                        if (isNaN(rem)) errorMsg = "อย่าลืมกรอกเศษ (ถ้าหารลงตัวใส่ 0)";
+                        else if (n1 === p.num1 && n2 === p.num2 && ans === p.answer && rem === p.remainder) isCorrect = true;
+                        else if (n2 > 0 && rem >= n2) errorMsg = "เศษต้องน้อยกว่าตัวหารเสมอนะ หารต่อได้อีก!";
+                        else if (ans * n2 + rem !== n1) errorMsg = "หารผิดจ้า ลองตั้งหารยาวดูใหม่นะ";
+                        else errorMsg = "ตัวตั้ง/ตัวหารไม่ตรงกับแผน";
+                    }
+                }
+            }
+            else if (phase === 'REVIEW') {
+                if (p.type === 'multiplication') {
+                    const prod = parseInt(document.getElementById('rm-rev-p').value); const mult = parseInt(document.getElementById('rm-rev-m').value); const mcand = parseInt(document.getElementById('rm-rev-mc').value);
+                    if (isNaN(prod) || isNaN(mult) || isNaN(mcand)) errorMsg = "ใส่เลขให้ครบถ้วน";
+                    else if (prod === p.answer && ((mult===p.num1 && mcand===p.num2) || (mult===p.num2 && mcand===p.num1))) isCorrect = true;
+                    else errorMsg = "สมการตรวจคำตอบผิด! เอา (ผลคูณ ÷ ตัวคูณ = ตัวตั้ง)";
+                } else {
+                    const q = parseInt(document.getElementById('rm-rev-q').value); const d = parseInt(document.getElementById('rm-rev-d').value);
+                    const rInput = document.getElementById('rm-rev-r').value; const r = rInput === "" ? 0 : parseInt(rInput);
+                    const div = parseInt(document.getElementById('rm-rev-div').value);
+                    if (isNaN(q) || isNaN(d) || isNaN(div) || isNaN(r)) errorMsg = "ใส่เลขให้ครบ (เศษไม่มีใส่ 0)";
+                    else if (q === p.answer && d === p.num2 && r === p.remainder && div === p.num1) isCorrect = true;
+                    else errorMsg = "สมการตรวจผิด! เอา (ผลหาร × ตัวหาร) + เศษ = ตัวตั้ง";
+                }
+            }
+
+            if (isCorrect) {
+                playTone(800, 'sine', 0.1); 
+                this.state.currentPolyaIndex++; this.updateUI();
+                if (this.state.currentPolyaIndex > 3) {
+                    document.getElementById('rm-overlay-polya').classList.add('hidden');
+                    this.handleStageComplete();
+                } else {
+                    this.showModal('🎉 ถูกต้อง ยอดเยี่ยม!', '<p class="text-lg">วิ่งหาไอเทมชิ้นต่อไปเพื่อทำขั้นต่อไปกันเลย!</p>', '🚀 วิ่งต่อ', () => { this.resumeRunner(); });
+                }
+            } else {
+                if (!this.runnerLoseLife('ตอบผิด')) {
+                    this.showModal('💡 ลองดูใหม่นะ', `<p class="text-lg text-red-700">${errorMsg}</p><p class="text-sm mt-2 text-gray-500">ตอบผิดหัวใจลดนะ ระวังด้วย!</p>`, 'ลองอีกครั้ง 🔄', null, true);
+                }
+            }
+        },
+
+        handleStageComplete: function() {
+            this.state.runnerActive = false; cancelAnimationFrame(this.animationFrameId);
+            if (this.state.currentSubstage < this.state.maxSubstage) {
+                playTone(1000, 'sine', 0.2); 
+                this.showModal(`🎉 ผ่านด่านย่อยที่ ${this.state.currentSubstage}!`, `<p class="text-lg text-emerald-600 font-bold">แก้โจทย์สำเร็จทั้ง 4 ขั้นตอน</p><p class="text-sm mt-2 text-gray-500">เตรียมตัวความเร็วของยานจะเพิ่มขึ้นนะ!</p>`, '🚀 ลุยด่านต่อไป', () => {
+                    this.state.currentSubstage++; this.startSubstage();
+                });
+            } else {
+                completeLevel(this.state.levelId);
+            }
+        }
+    };
+
+    // ----------------------------------------------------------------------
+    // 3. SYSTEM START
+    // ----------------------------------------------------------------------
+    window.onload = () => {
+        // Nothing auto-loads because Cloud needs Auth first.
+    };
+  </script>
+</body>
+</html>
